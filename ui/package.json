@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prebuild": "node ./scripts/write-build-meta.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview"

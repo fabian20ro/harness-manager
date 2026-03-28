@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use anyhow::Result;
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderValue, Method, StatusCode},
     response::{
         sse::{Event, KeepAlive, Sse},
         Html, IntoResponse,
@@ -47,6 +47,17 @@ impl AppState {
 }
 
 pub fn router(state: AppState) -> Router {
+    let allowed_origins = state
+        .config
+        .allowed_origins
+        .iter()
+        .filter_map(|origin| HeaderValue::from_str(origin).ok())
+        .collect::<Vec<_>>();
+    let cors = CorsLayer::new()
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers([axum::http::header::CONTENT_TYPE])
+        .allow_origin(allowed_origins);
+
     Router::new()
         .route("/", get(index))
         .route("/api/projects", get(get_projects))
@@ -59,7 +70,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/jobs/:id", get(get_job))
         .route("/api/events", get(get_events))
         .nest_service("/assets", ServeDir::new("ui/dist/assets"))
-        .layer(CorsLayer::permissive())
+        .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
@@ -218,6 +229,7 @@ async fn post_docs_fetch(
 ) -> ApiResult<Json<serde_json::Value>> {
     let job = state.jobs.create("fetch-docs", "Fetching docs snapshot.")?;
     let result = fetch_snapshot(
+        &state.config,
         &state.store,
         &body.url,
         body.project_id.as_deref(),

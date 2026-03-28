@@ -1,0 +1,66 @@
+name: Release Helper
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag, e.g. v0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-13
+            target: x86_64-apple-darwin
+            archive_suffix: macos-x64
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            archive_suffix: macos-arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add ${{ matrix.target }}
+
+      - name: Run Rust tests
+        run: cargo test --locked
+
+      - name: Build helper
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package helper
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/harness-inspector dist/harness-inspector
+          cp README.md dist/README.md
+          cp LICENSE dist/LICENSE
+          tar -czf harness-inspector-${RELEASE_TAG}-${{ matrix.archive_suffix }}.tar.gz -C dist .
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
+          ASSET: harness-inspector-${{ github.event.inputs.release_tag || github.ref_name }}-${{ matrix.archive_suffix }}.tar.gz
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$ASSET" --clobber
+          else
+            gh release create "$RELEASE_TAG" "$ASSET" --generate-notes --title "$RELEASE_TAG"
+          fi

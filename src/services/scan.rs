@@ -807,6 +807,9 @@ mod tests {
             default_roots: vec![home.join("git")],
             scan_max_depth: 5,
             known_global_dirs: vec![home.join(".codex")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
         };
         let store = Store::new(config.store_root.clone());
         let projects = scan_projects(&config, &store, None).expect("scan");
@@ -860,6 +863,9 @@ mod tests {
             default_roots: vec![home.join("git")],
             scan_max_depth: 5,
             known_global_dirs: vec![home.join(".codex")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
         };
         let store = Store::new(config.store_root.clone());
         let inventory = collect_repo_files(&repo, 5);

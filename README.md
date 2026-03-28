@@ -39,6 +39,24 @@ npm run build
 
 apoi deschizi [http://127.0.0.1:8765](http://127.0.0.1:8765).
 
+## GitHub Pages + Releases
+
+- GitHub Pages publică UI-ul static din `ui/dist`.
+- UI-ul publicat pe Pages presupune că helper-ul local rulează pe `http://127.0.0.1:8765`.
+- API base poate fi schimbat din UI, din query string `?apiBase=...`, sau din `localStorage`.
+- build-ul publicat include `build-meta.json`; pagina verifică la 180s și la revenirea în tab dacă există deploy nou și face reload cu cache-busting query param.
+- Workflow-ul `Deploy Pages` publică UI-ul pe Pages la push pe `main`.
+- Workflow-ul `Release Helper` publică arhive macOS (`arm64` și `x64`) în GitHub Releases la tag-uri `v*` sau manual.
+
+## Security defaults
+
+- helper-ul ascultă doar pe `127.0.0.1:8765`
+- CORS allowlist: localhost dev + `https://fabian20ro.github.io`
+- docs fetch permite implicit doar `https://` și blochează `localhost`, loopback și adrese private
+- override-uri:
+  - `HARNESS_ALLOWED_ORIGINS`
+  - `HARNESS_ALLOW_INSECURE_DOC_HOSTS=true`
+
 ## Test
 
 ```bash

@@ -64,6 +64,31 @@ const LABELS: Record<string, string> = {
 };
 
 const TABS = ["Projects", "Docs", "Tool", "Inspect", "Activity"] as const;
+const BUILD_CHECK_MS = 180_000;
+const CURRENT_BUILD_ID = import.meta.env.VITE_BUILD_ID ?? "dev";
+const BUILD_META_PATH = `${import.meta.env.BASE_URL}build-meta.json`;
+
+function defaultApiBase() {
+  const params = new URLSearchParams(window.location.search);
+  const fromQuery = params.get("apiBase");
+  if (fromQuery) return fromQuery;
+
+  const fromStorage = window.localStorage.getItem("harnessInspector.apiBase");
+  if (fromStorage) return fromStorage;
+
+  const host = window.location.hostname;
+  if (host === "127.0.0.1" || host === "localhost") {
+    return "";
+  }
+  if (host.endsWith("github.io")) {
+    return "http://127.0.0.1:8765";
+  }
+  return "";
+}
+
+function apiUrl(apiBase: string, path: string) {
+  return apiBase ? `${apiBase}${path}` : path;
+}
 
 export function App() {
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("Projects");
@@ -75,9 +100,11 @@ export function App() {
   const [inspect, setInspect] = useState<InspectPayload | null>(null);
   const [docUrl, setDocUrl] = useState("https://developers.openai.com/codex/plugins");
   const [statusMessage, setStatusMessage] = useState("Ready.");
+  const [apiBase, setApiBase] = useState(defaultApiBase);
+  const [staleBuildMessage, setStaleBuildMessage] = useState("");
 
   async function loadProjects() {
-    const response = await fetch("/api/projects");
+    const response = await fetch(apiUrl(apiBase, "/api/projects"));
     const payload = (await response.json()) as ProjectSummary[];
     setProjects(payload);
     if (!selectedProject && payload[0]) {
@@ -87,7 +114,7 @@ export function App() {
 
   async function runScan() {
     setStatusMessage("Scanning local roots.");
-    await fetch("/api/scan", {
+    await fetch(apiUrl(apiBase, "/api/scan"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
@@ -97,12 +124,57 @@ export function App() {
   }
 
   useEffect(() => {
-    loadProjects().catch((error) => setStatusMessage(String(error)));
+    window.localStorage.setItem("harnessInspector.apiBase", apiBase);
+  }, [apiBase]);
+
+  useEffect(() => {
+    if (CURRENT_BUILD_ID === "dev") {
+      return;
+    }
+
+    let lastCheckAt = 0;
+
+    const checkForNewBuild = async () => {
+      lastCheckAt = Date.now();
+      try {
+        const response = await fetch(`${BUILD_META_PATH}?ts=${Date.now()}`, {
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const payload = (await response.json()) as { buildId?: string };
+        if (payload.buildId && payload.buildId !== CURRENT_BUILD_ID) {
+          setStaleBuildMessage("New deploy detected. Reloading.");
+          const url = new URL(window.location.href);
+          url.searchParams.set("build", payload.buildId);
+          window.location.replace(url.toString());
+        }
+      } catch {
+        // no-op; stale check should never block usage
+      }
+    };
+
+    const interval = window.setInterval(checkForNewBuild, BUILD_CHECK_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && Date.now() - lastCheckAt >= BUILD_CHECK_MS) {
+        void checkForNewBuild();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    void checkForNewBuild();
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   useEffect(() => {
+    loadProjects().catch((error) => setStatusMessage(String(error)));
+  }, [apiBase]);
+
+  useEffect(() => {
     if (!selectedProject) return;
-    fetch(`/api/projects/${selectedProject}/graph?tool=${selectedTool}`)
+    fetch(apiUrl(apiBase, `/api/projects/${selectedProject}/graph?tool=${selectedTool}`))
       .then((response) => response.json())
       .then((payload: SurfaceState) => {
         setGraph(payload);
@@ -110,15 +182,20 @@ export function App() {
         setSelectedNode(preferred?.id ?? "");
       })
       .catch((error) => setStatusMessage(String(error)));
-  }, [selectedProject, selectedTool]);
+  }, [apiBase, selectedProject, selectedTool]);
 
   useEffect(() => {
     if (!selectedProject || !selectedNode) return;
-    fetch(`/api/projects/${selectedProject}/inspect?tool=${selectedTool}&node=${encodeURIComponent(selectedNode)}`)
+    fetch(
+      apiUrl(
+        apiBase,
+        `/api/projects/${selectedProject}/inspect?tool=${selectedTool}&node=${encodeURIComponent(selectedNode)}`,
+      ),
+    )
       .then((response) => response.json())
       .then((payload: InspectPayload) => setInspect(payload))
       .catch((error) => setStatusMessage(String(error)));
-  }, [selectedProject, selectedNode, selectedTool]);
+  }, [apiBase, selectedProject, selectedNode, selectedTool]);
 
   const prioritizedNodes = useMemo(() => {
     if (!graph) return [];
@@ -136,26 +213,33 @@ export function App() {
   async function fetchDocs() {
     if (!selectedProject) return;
     setStatusMessage("Fetching docs snapshot.");
-    await fetch("/api/docs/fetch", {
+    await fetch(apiUrl(apiBase, "/api/docs/fetch"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: docUrl, project_id: selectedProject, tool: selectedTool }),
     });
     setStatusMessage("Docs snapshot saved.");
-    const response = await fetch(`/api/projects/${selectedProject}/graph?tool=${selectedTool}`);
+    const response = await fetch(
+      apiUrl(apiBase, `/api/projects/${selectedProject}/graph?tool=${selectedTool}`),
+    );
     setGraph((await response.json()) as SurfaceState);
   }
 
   async function refreshActivity() {
     if (!selectedProject) return;
     setStatusMessage("Refreshing observed activity.");
-    await fetch("/api/activity/refresh", {
+    await fetch(apiUrl(apiBase, "/api/activity/refresh"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ project_id: selectedProject, tool: selectedTool }),
     });
     if (selectedNode) {
-      const response = await fetch(`/api/projects/${selectedProject}/inspect?tool=${selectedTool}&node=${encodeURIComponent(selectedNode)}`);
+      const response = await fetch(
+        apiUrl(
+          apiBase,
+          `/api/projects/${selectedProject}/inspect?tool=${selectedTool}&node=${encodeURIComponent(selectedNode)}`,
+        ),
+      );
       setInspect((await response.json()) as InspectPayload);
     }
     setStatusMessage("Activity refresh complete.");
@@ -206,7 +290,17 @@ export function App() {
               ))}
             </select>
           </label>
+          <label className="api-field">
+            API Base
+            <input
+              value={apiBase}
+              onChange={(event) => setApiBase(event.target.value)}
+              placeholder="http://127.0.0.1:8765"
+            />
+          </label>
         </header>
+
+        {staleBuildMessage ? <p className="stale-banner">{staleBuildMessage}</p> : null}
 
         {activeTab === "Projects" && (
           <section className="panel">
