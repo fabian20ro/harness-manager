@@ -38,6 +38,11 @@ select {
   display: grid;
   grid-template-columns: 240px 1fr;
   min-height: 100vh;
+  overflow-x: clip;
+}
+
+.shell-collapsed {
+  grid-template-columns: 88px 1fr;
 }
 
 .nav {
@@ -45,6 +50,13 @@ select {
   border-right: 1px solid var(--line);
   background: rgba(252, 248, 241, 0.8);
   backdrop-filter: blur(18px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.nav.collapsed {
+  padding-inline: 12px;
 }
 
 .brand p,
@@ -64,10 +76,60 @@ select {
   font-size: 0.9rem;
 }
 
+.brand-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.collapse-toggle,
+.icon-only {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 12px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.collapse-toggle {
+  min-width: 34px;
+  min-height: 34px;
+}
+
+.helper-box {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.helper-box code {
+  font-size: 0.88rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.helper-box button {
+  justify-self: start;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-strong);
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.helper-label {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .tab,
 .scan,
 .project-card,
-.node,
 .docs-form button,
 .activity-header button {
   border: 1px solid var(--line);
@@ -81,20 +143,28 @@ select {
 .scan {
   width: 100%;
   padding: 12px;
-  margin-top: 10px;
   text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .tab.active,
 .project-card.active,
-.node.active {
+.tree-node.active {
   background: var(--panel-strong);
   border-color: rgba(31, 111, 178, 0.4);
   box-shadow: 0 14px 40px rgba(31, 111, 178, 0.14);
 }
 
+.tab-emoji {
+  font-size: 1rem;
+  line-height: 1;
+}
+
 .workspace {
   padding: 24px;
+  min-width: 0;
 }
 
 .toolbar {
@@ -129,10 +199,11 @@ select {
   background: var(--panel);
   backdrop-filter: blur(18px);
   box-shadow: 0 20px 60px rgba(22, 35, 59, 0.08);
+  min-width: 0;
 }
 
 .project-list,
-.node-list {
+.tree-root {
   display: grid;
   gap: 12px;
 }
@@ -147,7 +218,7 @@ select {
 
 .project-card span,
 .project-card em,
-.node span {
+.tree-group {
   color: var(--muted);
 }
 
@@ -155,16 +226,58 @@ select {
   display: grid;
   grid-template-columns: 0.95fr 1.15fr 1fr;
   gap: 16px;
+  min-width: 0;
 }
 
-.center pre {
+.inspect-panel {
+  font-size: 0.9rem;
+}
+
+.inspect-panel h2 {
+  font-size: 1.1rem;
+}
+
+.inspect-panel h3 {
+  font-size: 0.9rem;
+  margin-top: 18px;
+}
+
+.tree-row {
+  display: block;
+}
+
+.tree-group {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 4px 0;
+}
+
+.tree-node {
+  width: 100%;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  border-radius: 10px;
+  cursor: pointer;
+  padding: 6px 8px;
+  font-size: 0.8rem;
+}
+
+.viewer-pre {
   max-height: 70vh;
   overflow: auto;
-  padding: 16px;
+  margin: 0;
+  padding: 14px;
   border-radius: 16px;
   background: rgba(22, 35, 59, 0.92);
   color: #f1efe8;
   font-family: "SF Mono", "Berkeley Mono", monospace;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .badge-row {
@@ -188,6 +301,13 @@ select {
 .badge-broken_reference,
 .badge-unresolved { background: rgba(177, 58, 58, 0.18); }
 
+.inspect-path {
+  font-family: "SF Mono", "Berkeley Mono", monospace;
+  font-size: 0.76rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 .docs-form,
 .activity-header {
   display: flex;
@@ -209,6 +329,10 @@ select {
 
 @media (max-width: 1100px) {
   .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .shell-collapsed {
     grid-template-columns: 1fr;
   }
 

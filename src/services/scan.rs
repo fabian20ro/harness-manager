@@ -18,7 +18,7 @@ use crate::{
         PluginArtifactNode, PluginNode, ProjectNode, ProjectSummary, RemoteSnapshotNode, ScopeType,
         SnapshotAssociation, SurfaceState, ToolCatalog, ToolContext, ToolContextNode, Verdict,
     },
-    services::refs::extract_references,
+    services::refs::{extract_references, ResolverContext},
     storage::Store,
 };
 
@@ -94,6 +94,7 @@ fn scan_project(
     let summary = ProjectSummary {
         id: project_id.clone(),
         root_path: repo_root.to_string_lossy().to_string(),
+        display_path: display_path(repo_root, &config.home_dir),
         name: repo_root
             .file_name()
             .and_then(|name| name.to_str())
@@ -149,6 +150,7 @@ fn build_surface_state(
         id: format!("project:{}", project.id),
         name: project.name.clone(),
         root_path: project.root_path.clone(),
+        display_path: project.display_path.clone(),
     });
     let tool_ctx = ToolContext {
         id: catalog.surface.clone(),
@@ -174,7 +176,9 @@ fn build_surface_state(
     let repo_root = PathBuf::from(&project.root_path);
     let mut basename_to_node = HashMap::<String, String>::new();
 
-    for artifact in collect_artifacts_from_rules(&repo_root, inventory, catalog, indexed_at)? {
+    for artifact in
+        collect_artifacts_from_rules(&repo_root, inventory, catalog, &config.home_dir, indexed_at)?
+    {
         basename_to_node.insert(
             Path::new(&artifact.path)
                 .file_name()
@@ -216,7 +220,10 @@ fn build_surface_state(
             verdicts.push(Verdict {
                 entity_id: artifact.id.clone(),
                 states: artifact.states.clone(),
-                why_included: vec![format!("Detected in global scope: {}", artifact.path)],
+                why_included: vec![format!(
+                    "Detected in global scope: {}",
+                    artifact.display_path
+                )],
                 why_excluded: vec!["Shadowed by repo-local artifact.".to_string()],
                 shadowed_by: vec![repo_artifact_id.clone()],
                 provenance_paths: vec![vec![tool_node.id().to_string(), artifact.id.clone()]],
@@ -300,6 +307,7 @@ fn collect_artifacts_from_rules(
     repo_root: &Path,
     inventory: &[String],
     catalog: &ToolCatalog,
+    home_dir: &Path,
     indexed_at: DateTime<Utc>,
 ) -> Result<Vec<ArtifactNode>> {
     let mut nodes = Vec::new();
@@ -326,6 +334,7 @@ fn collect_artifacts_from_rules(
                 nodes.push(ArtifactNode {
                     id: stable_id(&catalog.surface, &full_path.to_string_lossy()),
                     path: full_path.to_string_lossy().to_string(),
+                    display_path: display_path(&full_path, home_dir),
                     artifact_type: artifact_type.clone(),
                     tool_family: catalog.family.clone(),
                     scope_type,
@@ -358,6 +367,7 @@ fn collect_global_locations(
         nodes.push(ArtifactNode {
             id: stable_id(&catalog.surface, &path.to_string_lossy()),
             path: path.to_string_lossy().to_string(),
+            display_path: display_path(&path, &config.home_dir),
             artifact_type: location.artifact_type.clone(),
             tool_family: catalog.family.clone(),
             scope_type: location.scope_type.clone(),
@@ -435,6 +445,7 @@ fn collect_plugins(
                 name: plugin_name.clone(),
                 plugin_system: plugin_system.system.clone(),
                 install_root: plugin_root.to_string_lossy().to_string(),
+                display_path: display_path(&plugin_root, &config.home_dir),
                 manifest_path: manifest
                     .as_ref()
                     .map(|path| path.to_string_lossy().to_string()),
@@ -483,6 +494,7 @@ fn collect_plugins(
                     id: artifact_id.clone(),
                     plugin_id: plugin_id.clone(),
                     path: manifest.to_string_lossy().to_string(),
+                    display_path: display_path(manifest, &config.home_dir),
                     artifact_type: ArtifactType::PluginManifest,
                     states: vec![NodeState::Declared, NodeState::Effective],
                     confidence: 0.95,
@@ -503,6 +515,7 @@ fn collect_plugins(
                     id: artifact_id.clone(),
                     plugin_id: plugin_id.clone(),
                     path: readme.to_string_lossy().to_string(),
+                    display_path: display_path(&readme, &config.home_dir),
                     artifact_type: ArtifactType::PluginDoc,
                     states: vec![NodeState::Declared],
                     confidence: 0.7,
@@ -536,6 +549,7 @@ fn collect_reference_edges(
             GraphNode::PluginArtifact(artifact) => Some(ArtifactNode {
                 id: artifact.id.clone(),
                 path: artifact.path.clone(),
+                display_path: artifact.display_path.clone(),
                 artifact_type: artifact.artifact_type.clone(),
                 tool_family: "plugin".to_string(),
                 scope_type: ScopeType::PluginProvided,
@@ -560,14 +574,23 @@ fn collect_reference_edges(
         let Ok(content) = fs::read_to_string(path) else {
             continue;
         };
-        for hit in extract_references(path, &content, &config.home_dir) {
+        let context = ResolverContext {
+            base_file: path,
+            base_display_path: &artifact.display_path,
+            artifact_type: &artifact.artifact_type,
+            tool_family: &artifact.tool_family,
+            home_dir: &config.home_dir,
+        };
+        for hit in extract_references(&context, &content) {
             let target_id = stable_id("reference", &hit.resolved_path.to_string_lossy());
+            let target_display_path = display_path(&hit.resolved_path, &config.home_dir);
             if !nodes.contains_key(&target_id) {
                 nodes.insert(
                     target_id.clone(),
                     GraphNode::Artifact(ArtifactNode {
                         id: target_id.clone(),
                         path: hit.resolved_path.to_string_lossy().to_string(),
+                        display_path: target_display_path.clone(),
                         artifact_type: ArtifactType::ReferenceTarget,
                         tool_family: "reference".to_string(),
                         scope_type: if hit.broken {
@@ -580,16 +603,16 @@ fn collect_reference_edges(
                         } else {
                             vec![NodeState::ReferencedOnly]
                         },
-                        confidence: if hit.broken { 0.85 } else { 0.65 },
+                        confidence: hit.confidence,
                         origin: "reference".to_string(),
                         last_indexed_at: indexed_at,
                         hash: file_hash(&hit.resolved_path)
                             .unwrap_or_else(|_| "missing".to_string()),
                         mtime: fs::metadata(&hit.resolved_path).ok().and_then(mtime_utc),
                         reason: if hit.broken {
-                            format!("Referenced path missing: {}", hit.raw)
+                            format!("{} Missing target: {}", hit.reason, target_display_path)
                         } else {
-                            format!("Referenced from {}", artifact.path)
+                            format!("{} Target: {}", hit.reason, target_display_path)
                         },
                     }),
                 );
@@ -600,9 +623,12 @@ fn collect_reference_edges(
                 edge_type: hit.edge_type,
                 hardness: if hit.broken { "soft" } else { "hard" }.to_string(),
                 reason: if hit.broken {
-                    format!("Broken reference found in {}.", artifact.path)
+                    format!(
+                        "{} Broken target from {}.",
+                        hit.reason, artifact.display_path
+                    )
                 } else {
-                    format!("Reference found in {}.", artifact.path)
+                    format!("{} Source: {}.", hit.reason, artifact.display_path)
                 },
             });
             edges.push(GraphEdge {
@@ -693,6 +719,19 @@ fn resolve_catalog_path(pattern: &str, home_dir: &Path, project_root: Option<&Pa
         with_home
     };
     PathBuf::from(with_project)
+}
+
+fn display_path(path: &Path, home_dir: &Path) -> String {
+    if let Ok(relative) = path.strip_prefix(home_dir) {
+        let relative = relative.to_string_lossy();
+        if relative.is_empty() {
+            "~".to_string()
+        } else {
+            format!("~/{}", relative)
+        }
+    } else {
+        path.to_string_lossy().to_string()
+    }
 }
 
 fn confidence_from_states(states: &[NodeState]) -> f32 {
@@ -790,7 +829,7 @@ mod tests {
         storage::Store,
     };
 
-    use super::{build_surface_state, collect_repo_files, scan_projects};
+    use super::{build_surface_state, collect_repo_files, display_path, scan_projects};
 
     #[test]
     fn scan_finds_repo_and_codex_artifacts() {
@@ -826,7 +865,7 @@ mod tests {
         assert!(state
             .edges
             .iter()
-            .any(|edge| edge.reason.contains("Reference found")));
+            .any(|edge| edge.reason.contains("Instruction import found")));
     }
 
     #[test]
@@ -875,6 +914,7 @@ mod tests {
             &crate::domain::ProjectSummary {
                 id: "demo".to_string(),
                 root_path: repo.to_string_lossy().to_string(),
+                display_path: display_path(&repo, &home),
                 name: "demo".to_string(),
                 indexed_at: Utc::now(),
                 status: "ready".to_string(),
@@ -893,5 +933,53 @@ mod tests {
             })
             .expect("plugin node");
         assert!(plugin.states.contains(&NodeState::Inactive));
+    }
+
+    #[test]
+    fn typed_config_references_produce_graph_edges() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let repo = home.join("git").join("demo");
+        fs::create_dir_all(repo.join(".git")).expect("git dir");
+        fs::create_dir_all(repo.join(".codex")).expect("codex dir");
+        fs::write(
+            repo.join(".codex").join("config.toml"),
+            "[instructions]\ninclude = \"./policy.md\"\n",
+        )
+        .expect("config");
+        fs::write(repo.join(".codex").join("policy.md"), "ok").expect("policy");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".codex")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        let inventory = collect_repo_files(&repo, 5);
+        let state = build_surface_state(
+            &config,
+            &store,
+            &crate::domain::ProjectSummary {
+                id: "demo".to_string(),
+                root_path: repo.to_string_lossy().to_string(),
+                display_path: display_path(&repo, &home),
+                name: "demo".to_string(),
+                indexed_at: Utc::now(),
+                status: "ready".to_string(),
+            },
+            &seed_catalog_map().expect("catalogs")["codex"],
+            &inventory,
+        )
+        .expect("state");
+
+        assert!(state
+            .edges
+            .iter()
+            .any(|edge| edge.reason.contains("Typed config reference found")));
     }
 }

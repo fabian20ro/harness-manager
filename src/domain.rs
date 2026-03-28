@@ -74,6 +74,7 @@ pub enum ArtifactType {
 pub struct ProjectSummary {
     pub id: String,
     pub root_path: String,
+    pub display_path: String,
     pub name: String,
     pub indexed_at: DateTime<Utc>,
     pub status: String,
@@ -149,6 +150,7 @@ pub struct ToolCatalog {
 pub struct ArtifactNode {
     pub id: String,
     pub path: String,
+    pub display_path: String,
     pub artifact_type: ArtifactType,
     pub tool_family: String,
     pub scope_type: ScopeType,
@@ -167,6 +169,7 @@ pub struct PluginNode {
     pub name: String,
     pub plugin_system: String,
     pub install_root: String,
+    pub display_path: String,
     pub manifest_path: Option<String>,
     pub states: Vec<NodeState>,
     pub confidence: f32,
@@ -178,6 +181,7 @@ pub struct PluginArtifactNode {
     pub id: String,
     pub plugin_id: String,
     pub path: String,
+    pub display_path: String,
     pub artifact_type: ArtifactType,
     pub states: Vec<NodeState>,
     pub confidence: f32,
@@ -189,6 +193,7 @@ pub struct ProjectNode {
     pub id: String,
     pub name: String,
     pub root_path: String,
+    pub display_path: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -234,9 +239,9 @@ impl GraphNode {
         match self {
             GraphNode::Project(node) => node.name.clone(),
             GraphNode::ToolContext(node) => node.tool.display_name.clone(),
-            GraphNode::Artifact(node) => node.path.clone(),
+            GraphNode::Artifact(node) => node.display_path.clone(),
             GraphNode::Plugin(node) => node.name.clone(),
-            GraphNode::PluginArtifact(node) => node.path.clone(),
+            GraphNode::PluginArtifact(node) => node.display_path.clone(),
             GraphNode::RemoteSnapshot(node) => node.url.clone(),
         }
     }

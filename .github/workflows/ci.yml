@@ -43,6 +43,9 @@ jobs:
       - name: Install UI deps
         run: npm ci
 
+      - name: Run UI tests
+        run: npm test
+
       - name: Build UI
         env:
           VITE_BASE_PATH: /

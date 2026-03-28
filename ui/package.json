@@ -7,17 +7,23 @@
     "prebuild": "node ./scripts/write-build-meta.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.8.0",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.2",
+    "jsdom": "^26.1.0",
     "typescript": "^5.9.2",
-    "vite": "^7.1.3"
+    "vite": "^7.1.3",
+    "vitest": "^2.1.9"
   }
 }

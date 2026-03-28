@@ -1,79 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
 
-type ProjectSummary = {
-  id: string;
-  root_path: string;
-  name: string;
-  indexed_at: string;
-  status: string;
-};
+import { InspectTree } from "./components/InspectTree";
+import { SidebarNav } from "./components/SidebarNav";
+import { ViewerPane } from "./components/ViewerPane";
+import {
+  buildInspectTree,
+  type AppTab,
+  formatDisplayPath,
+  getNodeLabel,
+  LABELS,
+  pickNextSelectedNode,
+  TOOL_IDS,
+} from "./lib/inspect";
+import type { GraphNodeRecord, InspectPayload, ProjectSummary, SurfaceState } from "./lib/types";
 
-type ToolContext = {
-  id: string;
-  display_name: string;
-  support_level: string;
-};
-
-type SurfaceState = {
-  project: ProjectSummary;
-  tool: ToolContext;
-  nodes: Array<{ id: string; kind: string; [key: string]: unknown }>;
-  edges: Array<{ from: string; to: string; edge_type: string; reason: string }>;
-  verdicts: Array<{
-    entity_id: string;
-    states: string[];
-    why_included: string[];
-    why_excluded: string[];
-  }>;
-};
-
-type InspectPayload = {
-  entity: { id: string; kind: string; [key: string]: unknown };
-  verdict?: {
-    states: string[];
-    why_included: string[];
-    why_excluded: string[];
-    shadowed_by: string[];
-  };
-  incoming_edges: Array<{ from: string; edge_type: string; reason: string }>;
-  outgoing_edges: Array<{ to: string; edge_type: string; reason: string }>;
-  related_activity: Array<{ payload_ref: string; confidence: number }>;
-  viewer_content?: string;
-};
-
-const TOOLS = [
-  "claude_code",
-  "claude_cowork",
-  "codex",
-  "codex_cli",
-  "copilot_cli",
-  "intellij_copilot",
-  "opencode",
-  "antigravity",
-];
-
-const LABELS: Record<string, string> = {
-  claude_code: "Claude Code",
-  claude_cowork: "Claude Cowork",
-  codex: "Codex",
-  codex_cli: "Codex CLI",
-  copilot_cli: "Copilot CLI",
-  intellij_copilot: "IntelliJ/Copilot",
-  opencode: "OpenCode",
-  antigravity: "Antigravity",
-};
-
-const TABS = ["Projects", "Docs", "Tool", "Inspect", "Activity"] as const;
 const BUILD_CHECK_MS = 180_000;
 const CURRENT_BUILD_ID = import.meta.env.VITE_BUILD_ID ?? "dev";
 const BUILD_META_PATH = `${import.meta.env.BASE_URL}build-meta.json`;
+const STORAGE_PREFIX = "harnessInspector";
 
 function defaultApiBase() {
   const params = new URLSearchParams(window.location.search);
   const fromQuery = params.get("apiBase");
   if (fromQuery) return fromQuery;
 
-  const fromStorage = window.localStorage.getItem("harnessInspector.apiBase");
+  const fromStorage = window.localStorage.getItem(`${STORAGE_PREFIX}.apiBase`);
   if (fromStorage) return fromStorage;
 
   const host = window.location.hostname;
@@ -90,11 +41,29 @@ function apiUrl(apiBase: string, path: string) {
   return apiBase ? `${apiBase}${path}` : path;
 }
 
+function loadStored<T>(key: string, fallback: T) {
+  const raw = window.localStorage.getItem(key);
+  return raw ? (JSON.parse(raw) as T) : fallback;
+}
+
+function nodeStorageKey(projectId: string, toolId: string) {
+  return `${STORAGE_PREFIX}.inspectNode.${projectId}.${toolId}`;
+}
+
 export function App() {
-  const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("Projects");
+  const [activeTab, setActiveTab] = useState<AppTab>(
+    () => loadStored(`${STORAGE_PREFIX}.activeTab`, "Projects") as AppTab,
+  );
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [selectedProject, setSelectedProject] = useState<string>("");
-  const [selectedTool, setSelectedTool] = useState<string>("codex");
+  const [selectedProject, setSelectedProject] = useState<string>(
+    () => window.localStorage.getItem(`${STORAGE_PREFIX}.selectedProject`) ?? "",
+  );
+  const [selectedTool, setSelectedTool] = useState<string>(
+    () => window.localStorage.getItem(`${STORAGE_PREFIX}.selectedTool`) ?? "codex",
+  );
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
+    () => loadStored(`${STORAGE_PREFIX}.sidebarCollapsed`, false),
+  );
   const [graph, setGraph] = useState<SurfaceState | null>(null);
   const [selectedNode, setSelectedNode] = useState<string>("");
   const [inspect, setInspect] = useState<InspectPayload | null>(null);
@@ -107,9 +76,12 @@ export function App() {
     const response = await fetch(apiUrl(apiBase, "/api/projects"));
     const payload = (await response.json()) as ProjectSummary[];
     setProjects(payload);
-    if (!selectedProject && payload[0]) {
-      setSelectedProject(payload[0].id);
-    }
+    setSelectedProject((current) => {
+      if (current && payload.some((project) => project.id === current)) {
+        return current;
+      }
+      return payload[0]?.id ?? "";
+    });
   }
 
   async function runScan() {
@@ -123,9 +95,43 @@ export function App() {
     setStatusMessage("Scan complete.");
   }
 
+  async function copyHelperCommand() {
+    try {
+      await navigator.clipboard.writeText("cargo run");
+      setStatusMessage("Copied cargo run.");
+    } catch (error) {
+      setStatusMessage(`Clipboard copy failed: ${String(error)}`);
+    }
+  }
+
   useEffect(() => {
-    window.localStorage.setItem("harnessInspector.apiBase", apiBase);
+    window.localStorage.setItem(`${STORAGE_PREFIX}.apiBase`, apiBase);
   }, [apiBase]);
+
+  useEffect(() => {
+    window.localStorage.setItem(`${STORAGE_PREFIX}.activeTab`, JSON.stringify(activeTab));
+  }, [activeTab]);
+
+  useEffect(() => {
+    window.localStorage.setItem(`${STORAGE_PREFIX}.selectedProject`, selectedProject);
+  }, [selectedProject]);
+
+  useEffect(() => {
+    window.localStorage.setItem(`${STORAGE_PREFIX}.selectedTool`, selectedTool);
+  }, [selectedTool]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      `${STORAGE_PREFIX}.sidebarCollapsed`,
+      JSON.stringify(sidebarCollapsed),
+    );
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    if (selectedProject && selectedTool && selectedNode) {
+      window.localStorage.setItem(nodeStorageKey(selectedProject, selectedTool), selectedNode);
+    }
+  }, [selectedNode, selectedProject, selectedTool]);
 
   useEffect(() => {
     if (CURRENT_BUILD_ID === "dev") {
@@ -133,13 +139,10 @@ export function App() {
     }
 
     let lastCheckAt = 0;
-
     const checkForNewBuild = async () => {
       lastCheckAt = Date.now();
       try {
-        const response = await fetch(`${BUILD_META_PATH}?ts=${Date.now()}`, {
-          cache: "no-store",
-        });
+        const response = await fetch(`${BUILD_META_PATH}?ts=${Date.now()}`, { cache: "no-store" });
         if (!response.ok) return;
         const payload = (await response.json()) as { buildId?: string };
         if (payload.buildId && payload.buildId !== CURRENT_BUILD_ID) {
@@ -149,7 +152,7 @@ export function App() {
           window.location.replace(url.toString());
         }
       } catch {
-        // no-op; stale check should never block usage
+        // ignore
       }
     };
 
@@ -161,7 +164,6 @@ export function App() {
     };
     document.addEventListener("visibilitychange", onVisible);
     void checkForNewBuild();
-
     return () => {
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisible);
@@ -173,42 +175,53 @@ export function App() {
   }, [apiBase]);
 
   useEffect(() => {
-    if (!selectedProject) return;
+    if (!selectedProject) {
+      setGraph(null);
+      return;
+    }
     fetch(apiUrl(apiBase, `/api/projects/${selectedProject}/graph?tool=${selectedTool}`))
       .then((response) => response.json())
       .then((payload: SurfaceState) => {
         setGraph(payload);
-        const preferred = payload.nodes.find((node) => node.kind !== "tool_context");
-        setSelectedNode(preferred?.id ?? "");
+        setSelectedNode((current) => {
+          const stored = window.localStorage.getItem(nodeStorageKey(selectedProject, selectedTool));
+          return pickNextSelectedNode(stored || current, payload.nodes, payload.verdicts);
+        });
       })
       .catch((error) => setStatusMessage(String(error)));
   }, [apiBase, selectedProject, selectedTool]);
 
   useEffect(() => {
-    if (!selectedProject || !selectedNode) return;
+    if (!selectedProject || !selectedNode || !graph) {
+      setInspect(null);
+      return;
+    }
+    if (!graph.nodes.some((node) => node.id === selectedNode)) {
+      return;
+    }
+
     fetch(
       apiUrl(
         apiBase,
         `/api/projects/${selectedProject}/inspect?tool=${selectedTool}&node=${encodeURIComponent(selectedNode)}`,
       ),
     )
-      .then((response) => response.json())
-      .then((payload: InspectPayload) => setInspect(payload))
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Inspect failed: ${response.status}`);
+        }
+        return (await response.json()) as InspectPayload;
+      })
+      .then((payload) => setInspect(payload))
       .catch((error) => setStatusMessage(String(error)));
-  }, [apiBase, selectedProject, selectedNode, selectedTool]);
+  }, [apiBase, graph, selectedProject, selectedNode, selectedTool]);
 
-  const prioritizedNodes = useMemo(() => {
-    if (!graph) return [];
-    const score = (node: { id: string }) => {
-      const verdict = graph.verdicts.find((item) => item.entity_id === node.id);
-      const states = verdict?.states ?? [];
-      if (states.includes("effective")) return 0;
-      if (states.includes("misleading")) return 1;
-      if (states.includes("referenced_only")) return 2;
-      return 3;
-    };
-    return [...graph.nodes].sort((left, right) => score(left) - score(right));
-  }, [graph]);
+  const tree = useMemo(() => buildInspectTree(graph), [graph]);
+  const selectedProjectMeta = projects.find((project) => project.id === selectedProject);
+  const currentNode = useMemo(
+    () => graph?.nodes.find((node) => node.id === selectedNode) ?? null,
+    [graph, selectedNode],
+  );
 
   async function fetchDocs() {
     if (!selectedProject) return;
@@ -218,11 +231,11 @@ export function App() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: docUrl, project_id: selectedProject, tool: selectedTool }),
     });
-    setStatusMessage("Docs snapshot saved.");
     const response = await fetch(
       apiUrl(apiBase, `/api/projects/${selectedProject}/graph?tool=${selectedTool}`),
     );
     setGraph((await response.json()) as SurfaceState);
+    setStatusMessage("Docs snapshot saved.");
   }
 
   async function refreshActivity() {
@@ -240,32 +253,24 @@ export function App() {
           `/api/projects/${selectedProject}/inspect?tool=${selectedTool}&node=${encodeURIComponent(selectedNode)}`,
         ),
       );
-      setInspect((await response.json()) as InspectPayload);
+      if (response.ok) {
+        setInspect((await response.json()) as InspectPayload);
+      }
     }
     setStatusMessage("Activity refresh complete.");
   }
 
   return (
-    <div className="shell">
-      <aside className="nav">
-        <div className="brand">
-          <p>Harness Inspector</p>
-          <span>Truth over elegance.</span>
-        </div>
-        {TABS.map((tab) => (
-          <button
-            key={tab}
-            className={tab === activeTab ? "tab active" : "tab"}
-            onClick={() => setActiveTab(tab)}
-          >
-            {tab}
-          </button>
-        ))}
-        <button className="scan" onClick={runScan}>
-          Reindex
-        </button>
-        <p className="status">{statusMessage}</p>
-      </aside>
+    <div className={sidebarCollapsed ? "shell shell-collapsed" : "shell"}>
+      <SidebarNav
+        activeTab={activeTab}
+        collapsed={sidebarCollapsed}
+        statusMessage={statusMessage}
+        onSelectTab={setActiveTab}
+        onToggleCollapse={() => setSidebarCollapsed((value) => !value)}
+        onReindex={runScan}
+        onCopyHelperCommand={() => void copyHelperCommand()}
+      />
 
       <main className="workspace">
         <header className="toolbar">
@@ -283,7 +288,7 @@ export function App() {
           <label>
             Tool
             <select value={selectedTool} onChange={(event) => setSelectedTool(event.target.value)}>
-              {TOOLS.map((tool) => (
+              {TOOL_IDS.map((tool) => (
                 <option key={tool} value={tool}>
                   {LABELS[tool]}
                 </option>
@@ -313,7 +318,7 @@ export function App() {
                   onClick={() => setSelectedProject(project.id)}
                 >
                   <strong>{project.name}</strong>
-                  <span>{project.root_path}</span>
+                  <span>{formatDisplayPath(project.display_path)}</span>
                   <em>{new Date(project.indexed_at).toLocaleString()}</em>
                 </button>
               ))}
@@ -326,7 +331,7 @@ export function App() {
             <h2>Docs</h2>
             <div className="docs-form">
               <input value={docUrl} onChange={(event) => setDocUrl(event.target.value)} />
-              <button onClick={fetchDocs}>Fetch snapshot</button>
+              <button onClick={() => void fetchDocs()}>Fetch snapshot</button>
             </div>
             <p>Snapshot binds to selected project and tool context.</p>
           </section>
@@ -335,34 +340,26 @@ export function App() {
         {activeTab === "Tool" && (
           <section className="panel">
             <h2>Tool Context</h2>
-            <p>{LABELS[selectedTool]}</p>
-            <p>Tree-first inspect. Graph as source of truth.</p>
+            <p>{LABELS[selectedTool as keyof typeof LABELS] ?? selectedTool}</p>
+            <p>Project: {selectedProjectMeta?.display_path ?? "No project selected"}</p>
           </section>
         )}
 
         {activeTab === "Inspect" && (
           <section className="inspect-grid">
-            <div className="panel left">
+            <div className="panel left inspect-panel">
               <h2>Effective Context Tree</h2>
-              <div className="node-list">
-                {prioritizedNodes.map((node) => (
-                  <button
-                    key={node.id}
-                    className={node.id === selectedNode ? "node active" : "node"}
-                    onClick={() => setSelectedNode(node.id)}
-                  >
-                    <strong>{String((node as Record<string, unknown>).name ?? (node as Record<string, unknown>).path ?? node.id)}</strong>
-                    <span>{node.kind}</span>
-                  </button>
-                ))}
-              </div>
+              <InspectTree tree={tree} selectedNodeId={selectedNode} onSelect={setSelectedNode} />
             </div>
-            <div className="panel center">
-              <h2>Viewer</h2>
-              <pre>{inspect?.viewer_content ?? "Select a node."}</pre>
+            <div className="panel center inspect-panel">
+              <h2>{currentNode ? getNodeLabel(currentNode) : "Viewer"}</h2>
+              <ViewerPane content={inspect?.viewer_content} />
             </div>
-            <div className="panel right">
+            <div className="panel right inspect-panel">
               <h2>Reasons</h2>
+              {currentNode?.display_path ? (
+                <p className="inspect-path">{formatDisplayPath(String(currentNode.display_path))}</p>
+              ) : null}
               <div className="badge-row">
                 {inspect?.verdict?.states.map((state) => (
                   <span key={state} className={`badge badge-${state}`}>
@@ -398,7 +395,7 @@ export function App() {
           <section className="panel">
             <div className="activity-header">
               <h2>Activity</h2>
-              <button onClick={refreshActivity}>Refresh observed</button>
+              <button onClick={() => void refreshActivity()}>Refresh observed</button>
             </div>
             <ul>
               {inspect?.related_activity.map((item) => (
