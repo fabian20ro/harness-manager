@@ -1,0 +1,209 @@
+:root {
+  --ink: #16233b;
+  --muted: #5f6c83;
+  --bg: #f2eee4;
+  --panel: rgba(255, 255, 255, 0.74);
+  --panel-strong: rgba(255, 255, 255, 0.92);
+  --line: rgba(22, 35, 59, 0.12);
+  --accent: #1f6fb2;
+  --global: #3776c5;
+  --repo: #2f8b57;
+  --specific: #9455a8;
+  --inactive: #8f97a6;
+  --misleading: #cc9b23;
+  --broken: #b13a3a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top left, rgba(55, 118, 197, 0.2), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(149, 85, 168, 0.18), transparent 32%),
+    var(--bg);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+}
+
+.nav {
+  padding: 24px 18px;
+  border-right: 1px solid var(--line);
+  background: rgba(252, 248, 241, 0.8);
+  backdrop-filter: blur(18px);
+}
+
+.brand p,
+.panel h2,
+.toolbar label {
+  font-family: "Iowan Old Style", "Palatino Linotype", serif;
+}
+
+.brand p {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.brand span,
+.status {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.tab,
+.scan,
+.project-card,
+.node,
+.docs-form button,
+.activity-header button {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 14px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.tab,
+.scan {
+  width: 100%;
+  padding: 12px;
+  margin-top: 10px;
+  text-align: left;
+}
+
+.tab.active,
+.project-card.active,
+.node.active {
+  background: var(--panel-strong);
+  border-color: rgba(31, 111, 178, 0.4);
+  box-shadow: 0 14px 40px rgba(31, 111, 178, 0.14);
+}
+
+.workspace {
+  padding: 24px;
+}
+
+.toolbar {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.toolbar label {
+  display: grid;
+  gap: 8px;
+  min-width: 240px;
+}
+
+.toolbar select,
+.docs-form input {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-strong);
+  padding: 10px 12px;
+}
+
+.panel {
+  padding: 20px;
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 20px 60px rgba(22, 35, 59, 0.08);
+}
+
+.project-list,
+.node-list {
+  display: grid;
+  gap: 12px;
+}
+
+.project-card,
+.node {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  text-align: left;
+}
+
+.project-card span,
+.project-card em,
+.node span {
+  color: var(--muted);
+}
+
+.inspect-grid {
+  display: grid;
+  grid-template-columns: 0.95fr 1.15fr 1fr;
+  gap: 16px;
+}
+
+.center pre {
+  max-height: 70vh;
+  overflow: auto;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(22, 35, 59, 0.92);
+  color: #f1efe8;
+  font-family: "SF Mono", "Berkeley Mono", monospace;
+}
+
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.badge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  background: rgba(22, 35, 59, 0.08);
+}
+
+.badge-effective { background: rgba(47, 139, 87, 0.18); }
+.badge-misleading { background: rgba(204, 155, 35, 0.2); }
+.badge-referenced_only { background: rgba(55, 118, 197, 0.18); }
+.badge-shadowed,
+.badge-inactive { background: rgba(143, 151, 166, 0.18); }
+.badge-broken_reference,
+.badge-unresolved { background: rgba(177, 58, 58, 0.18); }
+
+.docs-form,
+.activity-header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.docs-form input {
+  flex: 1;
+}
+
+@media (max-width: 1100px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .inspect-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar {
+    flex-direction: column;
+  }
+}

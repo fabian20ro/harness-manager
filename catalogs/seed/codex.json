@@ -1,0 +1,50 @@
+{
+  "surface": "codex",
+  "family": "codex",
+  "display_name": "Codex",
+  "version": "2026-03-28",
+  "support_level": "full",
+  "sources": [
+    {
+      "label": "OpenAI Codex Plugins",
+      "url": "https://developers.openai.com/codex/plugins"
+    }
+  ],
+  "known_locations": [
+    {
+      "path": "~/.codex/config.toml",
+      "scope_type": "global_user",
+      "artifact_type": "config",
+      "reason": "Global Codex config.",
+      "states": ["declared", "effective"]
+    }
+  ],
+  "artifact_rules": [
+    {
+      "glob": "AGENTS.md",
+      "artifact_type": "instructions",
+      "reason": "Repo instructions for Codex.",
+      "states": ["declared", "effective"]
+    },
+    {
+      "glob": ".codex/**/*.toml",
+      "artifact_type": "config",
+      "reason": "Project Codex config.",
+      "states": ["declared", "effective"]
+    },
+    {
+      "glob": ".codex/**/*.md",
+      "artifact_type": "local_doc",
+      "reason": "Codex project docs or plugin docs.",
+      "states": ["declared"]
+    }
+  ],
+  "observed_probes": ["ps:codex"],
+  "plugin_system": {
+    "system": "codex",
+    "install_roots": ["~/.codex/plugins"],
+    "manifest_paths": [".codex-plugin/plugin.json"],
+    "config_paths": ["~/.codex/config.toml", "{project}/.codex/config.toml"],
+    "compatibility": ["codex", "codex_cli"]
+  }
+}

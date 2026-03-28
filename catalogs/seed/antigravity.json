@@ -1,0 +1,33 @@
+{
+  "surface": "antigravity",
+  "family": "antigravity",
+  "display_name": "Antigravity",
+  "version": "2026-03-28",
+  "support_level": "experimental",
+  "sources": [],
+  "known_locations": [
+    {
+      "path": "~/.config/antigravity",
+      "scope_type": "global_user",
+      "artifact_type": "directory",
+      "reason": "Global Antigravity settings root.",
+      "states": ["declared"]
+    }
+  ],
+  "artifact_rules": [
+    {
+      "glob": ".antigravity/**/*",
+      "artifact_type": "config",
+      "reason": "Antigravity project config.",
+      "states": ["declared", "effective"]
+    },
+    {
+      "glob": "ANTIGRAVITY.md",
+      "artifact_type": "instructions",
+      "reason": "Repo instructions for Antigravity.",
+      "states": ["declared"]
+    }
+  ],
+  "observed_probes": ["ps:antigravity"],
+  "plugin_system": null
+}

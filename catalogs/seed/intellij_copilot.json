@@ -1,0 +1,25 @@
+{
+  "surface": "intellij_copilot",
+  "family": "copilot",
+  "display_name": "IntelliJ/Copilot",
+  "version": "2026-03-28",
+  "support_level": "best_effort",
+  "sources": [],
+  "known_locations": [],
+  "artifact_rules": [
+    {
+      "glob": ".github/copilot-instructions.md",
+      "artifact_type": "instructions",
+      "reason": "Repo Copilot instructions reused in IDE.",
+      "states": ["declared", "effective"]
+    },
+    {
+      "glob": ".github/agents/*.agent.md",
+      "artifact_type": "agent",
+      "reason": "Repo custom agent definitions.",
+      "states": ["declared"]
+    }
+  ],
+  "observed_probes": ["ps:idea", "ps:copilot"],
+  "plugin_system": null
+}

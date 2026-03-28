@@ -1,0 +1,50 @@
+{
+  "surface": "claude_code",
+  "family": "claude",
+  "display_name": "Claude Code",
+  "version": "2026-03-28",
+  "support_level": "full",
+  "sources": [
+    {
+      "label": "Anthropic Knowledge Work Plugins",
+      "url": "https://github.com/anthropics/knowledge-work-plugins"
+    }
+  ],
+  "known_locations": [
+    {
+      "path": "~/.claude",
+      "scope_type": "global_user",
+      "artifact_type": "directory",
+      "reason": "Global Claude settings root.",
+      "states": ["declared"]
+    }
+  ],
+  "artifact_rules": [
+    {
+      "glob": "CLAUDE.md",
+      "artifact_type": "instructions",
+      "reason": "Repo instructions for Claude.",
+      "states": ["declared", "effective"]
+    },
+    {
+      "glob": ".claude/**/*.json",
+      "artifact_type": "config",
+      "reason": "Claude project config.",
+      "states": ["declared"]
+    },
+    {
+      "glob": ".claude/**/*.md",
+      "artifact_type": "local_doc",
+      "reason": "Claude local docs or rules.",
+      "states": ["declared"]
+    }
+  ],
+  "observed_probes": ["ps:claude"],
+  "plugin_system": {
+    "system": "claude",
+    "install_roots": ["~/.claude/plugins", "~/.config/claude/plugins"],
+    "manifest_paths": ["plugin.json", "package.json"],
+    "config_paths": ["~/.claude/config.json", "{project}/.claude/config.json"],
+    "compatibility": ["claude_code", "claude_cowork"]
+  }
+}
