@@ -121,15 +121,24 @@ export function buildInspectTree(graph: SurfaceState | null): InspectTreeNode[] 
     .sort((left, right) => left.label.localeCompare(right.label));
 }
 
-export function collectRequiredExpandedKeys(tree: InspectTreeNode[], selectedNodeId: string) {
-  const requiredKeys = new Set<string>();
+export function collectAllDirectoryKeys(tree: InspectTreeNode[]) {
+  const expandedKeys = new Set<string>();
 
   for (const node of tree) {
-    requiredKeys.add(node.key);
-    collectSelectedAncestors(node, selectedNodeId, requiredKeys);
+    collectDirectoryKeys(node, expandedKeys);
   }
 
-  return [...requiredKeys];
+  return [...expandedKeys];
+}
+
+export function collectSelectedAncestorKeys(tree: InspectTreeNode[], selectedNodeId: string) {
+  const ancestorKeys = new Set<string>();
+
+  for (const node of tree) {
+    collectSelectedAncestors(node, selectedNodeId, ancestorKeys);
+  }
+
+  return [...ancestorKeys];
 }
 
 function isPathBearing(path: string) {
@@ -194,18 +203,27 @@ function finalizeTree(node: TrieNode): InspectTreeNode {
   };
 }
 
+function collectDirectoryKeys(node: InspectTreeNode, expandedKeys: Set<string>) {
+  if (!node.isDirectory) {
+    return;
+  }
+
+  expandedKeys.add(node.key);
+  node.children.forEach((child) => collectDirectoryKeys(child, expandedKeys));
+}
+
 function collectSelectedAncestors(
   node: InspectTreeNode,
   selectedNodeId: string,
-  requiredKeys: Set<string>,
+  ancestorKeys: Set<string>,
 ): boolean {
   const matches = node.nodeId === selectedNodeId;
   const descendantMatches = node.children.some((child) =>
-    collectSelectedAncestors(child, selectedNodeId, requiredKeys),
+    collectSelectedAncestors(child, selectedNodeId, ancestorKeys),
   );
 
   if (node.children.length > 0 && descendantMatches) {
-    requiredKeys.add(node.key);
+    ancestorKeys.add(node.key);
   }
 
   return matches || descendantMatches;

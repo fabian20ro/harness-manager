@@ -2,7 +2,6 @@ import { type InspectTreeNode } from "../lib/inspect";
 
 type InspectTreeProps = {
   expandedKeys: string[];
-  forcedExpandedKeys?: string[];
   tree: InspectTreeNode[];
   selectedNodeId: string;
   onSelect: (nodeId: string) => void;
@@ -11,14 +10,12 @@ type InspectTreeProps = {
 
 export function InspectTree({
   expandedKeys,
-  forcedExpandedKeys = [],
   tree,
   selectedNodeId,
   onSelect,
   onToggleExpand,
 }: InspectTreeProps) {
   const expanded = new Set(expandedKeys);
-  const forced = new Set(forcedExpandedKeys);
 
   return (
     <div className="tree-root">
@@ -26,7 +23,6 @@ export function InspectTree({
         <TreeBranch
           key={node.key}
           expanded={expanded}
-          forced={forced}
           node={node}
           depth={0}
           selectedNodeId={selectedNodeId}
@@ -40,7 +36,6 @@ export function InspectTree({
 
 function TreeBranch({
   expanded,
-  forced,
   node,
   depth,
   selectedNodeId,
@@ -48,7 +43,6 @@ function TreeBranch({
   onToggleExpand,
 }: {
   expanded: Set<string>;
-  forced: Set<string>;
   node: InspectTreeNode;
   depth: number;
   selectedNodeId: string;
@@ -58,7 +52,6 @@ function TreeBranch({
   const selected = node.nodeId === selectedNodeId;
   const isExpanded = expanded.has(node.key);
   const hasChildren = node.children.length > 0;
-  const isForcedOpen = forced.has(node.key);
   const selectLabel = node.nodeId ? `Select ${node.label}` : node.label;
 
   return (
@@ -70,7 +63,6 @@ function TreeBranch({
               className="tree-toggle"
               onClick={() => onToggleExpand(node.key)}
               aria-label={isExpanded ? `Collapse ${node.label}` : `Expand ${node.label}`}
-              title={isForcedOpen ? `${node.label} stays open for the active selection.` : undefined}
             >
               {isExpanded ? "▾" : "▸"}
             </button>
@@ -108,7 +100,6 @@ function TreeBranch({
             <TreeBranch
               key={child.key}
               expanded={expanded}
-              forced={forced}
               node={child}
               depth={depth + 1}
               selectedNodeId={selectedNodeId}

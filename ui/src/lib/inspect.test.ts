@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildInspectTree,
-  collectRequiredExpandedKeys,
+  collectAllDirectoryKeys,
+  collectSelectedAncestorKeys,
   formatDisplayPath,
   pickNextSelectedNode,
   usageStateForStates,
@@ -60,9 +61,16 @@ describe("inspect helpers", () => {
     expect(tree[0]?.children.map((child) => child.label)).toContain("git");
   });
 
-  it("keeps selected node ancestors expanded", () => {
+  it("collects all directory keys for default expansion", () => {
     const tree = buildInspectTree(graph);
-    expect(collectRequiredExpandedKeys(tree, "repo-file")).toEqual(
+    expect(collectAllDirectoryKeys(tree)).toEqual(
+      expect.arrayContaining(["~", "~/git", "~/git/harness-manager", "~/.codex"]),
+    );
+  });
+
+  it("collects selected node ancestors for one-shot auto expansion", () => {
+    const tree = buildInspectTree(graph);
+    expect(collectSelectedAncestorKeys(tree, "repo-file")).toEqual(
       expect.arrayContaining(["~", "~/git", "~/git/harness-manager"]),
     );
   });

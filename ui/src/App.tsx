@@ -93,7 +93,6 @@ export function App() {
               <div className="inspect-panel-body">
                 <InspectTree
                   expandedKeys={controller.treeExpandedKeys}
-                  forcedExpandedKeys={controller.treeForcedExpandedKeys}
                   tree={controller.tree}
                   selectedNodeId={controller.selectedNode}
                   onSelect={controller.setSelectedNode}

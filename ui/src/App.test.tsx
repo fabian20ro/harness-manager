@@ -217,4 +217,244 @@ describe("App", () => {
 
     expect(screen.getByRole("button", { name: "Reindexing..." })).toBeDisabled();
   });
+
+  it("starts with the tree expanded and keeps selection after collapsing an ancestor", async () => {
+    Object.defineProperty(window, "localStorage", {
+      value: {
+        getItem: vi.fn((key: string) => {
+          if (key === "harnessInspector.activeTab") {
+            return JSON.stringify("Inspect");
+          }
+          if (key === "harnessInspector.selectedTool") {
+            return "codex";
+          }
+          return null;
+        }),
+        setItem: vi.fn(),
+        removeItem: vi.fn(),
+      },
+      configurable: true,
+    });
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/api/projects")) {
+        return {
+          ok: true,
+          json: async () => [
+            {
+              id: "p1",
+              root_path: "/tmp/demo",
+              display_path: "~/git/demo",
+              name: "demo",
+              indexed_at: "2026-03-29T10:00:00Z",
+              status: "ready",
+            },
+          ],
+        } as Response;
+      }
+      if (url.includes("/api/projects/p1/graph?tool=codex")) {
+        return {
+          ok: true,
+          json: async () => ({
+            project: {
+              id: "p1",
+              root_path: "/tmp/demo",
+              display_path: "~/git/demo",
+              name: "demo",
+              indexed_at: "2026-03-29T10:00:00Z",
+              status: "ready",
+            },
+            tool: {
+              id: "codex",
+              display_name: "Codex",
+              support_level: "full",
+            },
+            nodes: [
+              { id: "tool:codex", kind: "tool_context" },
+              {
+                id: "repo-file",
+                kind: "artifact",
+                path: "/tmp/demo/docs/AGENTS.md",
+                display_path: "~/git/demo/docs/AGENTS.md",
+              },
+              {
+                id: "policy-file",
+                kind: "artifact",
+                path: "/tmp/demo/notes/policy.md",
+                display_path: "~/git/demo/notes/policy.md",
+              },
+            ],
+            edges: [],
+            verdicts: [
+              { entity_id: "repo-file", states: ["effective"], why_included: [], why_excluded: [] },
+              {
+                entity_id: "policy-file",
+                states: ["referenced_only"],
+                why_included: [],
+                why_excluded: [],
+              },
+            ],
+          }),
+        } as Response;
+      }
+      if (url.includes("/api/projects/p1/inspect?tool=codex")) {
+        return {
+          ok: true,
+          json: async () => ({
+            entity: {
+              id: "repo-file",
+              kind: "artifact",
+              path: "/tmp/demo/docs/AGENTS.md",
+              display_path: "~/git/demo/docs/AGENTS.md",
+            },
+            verdict: { states: ["effective"], why_included: [], why_excluded: [], shadowed_by: [] },
+            incoming_edges: [],
+            outgoing_edges: [],
+            related_activity: [],
+            viewer_content: "alpha",
+            edit: { editable: false, last_saved_backup_available: false },
+          }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => [],
+      } as Response;
+    });
+
+    render(<App />);
+    await act(async () => {
+      screen.getByRole("button", { name: "Inspect" }).click();
+    });
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Collapse git" })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Select AGENTS.md" })).toBeInTheDocument();
+
+    await act(async () => {
+      screen.getByRole("button", { name: "Collapse git" }).click();
+    });
+
+    expect(screen.queryByRole("button", { name: "Select AGENTS.md" })).not.toBeInTheDocument();
+    expect(screen.getByText("alpha")).toBeInTheDocument();
+  });
+
+  it("uses stored tree expansion state instead of the default fully-expanded seed", async () => {
+    const storedTreeKey = "harnessInspector.inspectTreeExpanded.p1.codex";
+    Object.defineProperty(window, "localStorage", {
+      value: {
+        getItem: vi.fn((key: string) => {
+          if (key === "harnessInspector.activeTab") {
+            return JSON.stringify("Inspect");
+          }
+          if (key === "harnessInspector.selectedTool") {
+            return "codex";
+          }
+          if (key === storedTreeKey) {
+            return JSON.stringify(["~"]);
+          }
+          return null;
+        }),
+        setItem: vi.fn(),
+        removeItem: vi.fn(),
+      },
+      configurable: true,
+    });
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/api/projects")) {
+        return {
+          ok: true,
+          json: async () => [
+            {
+              id: "p1",
+              root_path: "/tmp/demo",
+              display_path: "~/git/demo",
+              name: "demo",
+              indexed_at: "2026-03-29T10:00:00Z",
+              status: "ready",
+            },
+          ],
+        } as Response;
+      }
+      if (url.includes("/api/projects/p1/graph?tool=codex")) {
+        return {
+          ok: true,
+          json: async () => ({
+            project: {
+              id: "p1",
+              root_path: "/tmp/demo",
+              display_path: "~/git/demo",
+              name: "demo",
+              indexed_at: "2026-03-29T10:00:00Z",
+              status: "ready",
+            },
+            tool: {
+              id: "codex",
+              display_name: "Codex",
+              support_level: "full",
+            },
+            nodes: [
+              { id: "tool:codex", kind: "tool_context" },
+              {
+                id: "repo-file",
+                kind: "artifact",
+                path: "/tmp/demo/docs/AGENTS.md",
+                display_path: "~/git/demo/docs/AGENTS.md",
+              },
+              {
+                id: "policy-file",
+                kind: "artifact",
+                path: "/tmp/demo/notes/policy.md",
+                display_path: "~/git/demo/notes/policy.md",
+              },
+            ],
+            edges: [],
+            verdicts: [
+              { entity_id: "repo-file", states: ["effective"], why_included: [], why_excluded: [] },
+              {
+                entity_id: "policy-file",
+                states: ["referenced_only"],
+                why_included: [],
+                why_excluded: [],
+              },
+            ],
+          }),
+        } as Response;
+      }
+      if (url.includes("/api/projects/p1/inspect?tool=codex")) {
+        return {
+          ok: true,
+          json: async () => ({
+            entity: {
+              id: "repo-file",
+              kind: "artifact",
+              path: "/tmp/demo/docs/AGENTS.md",
+              display_path: "~/git/demo/docs/AGENTS.md",
+            },
+            verdict: { states: ["effective"], why_included: [], why_excluded: [], shadowed_by: [] },
+            incoming_edges: [],
+            outgoing_edges: [],
+            related_activity: [],
+            viewer_content: "alpha",
+            edit: { editable: false, last_saved_backup_available: false },
+          }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => [],
+      } as Response;
+    });
+
+    render(<App />);
+    await act(async () => {
+      screen.getByRole("button", { name: "Inspect" }).click();
+    });
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Collapse git" })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Expand notes" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Select policy.md" })).not.toBeInTheDocument();
+  });
 });

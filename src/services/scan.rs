@@ -42,9 +42,20 @@ struct PluginCandidate {
     name: String,
     install_root: PathBuf,
     manifest_path: Option<PathBuf>,
+    manifest_base_dir: Option<PathBuf>,
     readme_path: Option<PathBuf>,
     discovery_sources: Vec<String>,
     disabled: bool,
+}
+
+#[derive(Clone, Debug)]
+struct ScannableArtifact {
+    id: String,
+    path: String,
+    display_path: String,
+    resolve_from_dir: PathBuf,
+    artifact_type: ArtifactType,
+    tool_family: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -693,6 +704,7 @@ fn collect_plugins(
                 plugin_id: plugin_id.clone(),
                 path: manifest.to_string_lossy().to_string(),
                 display_path: display_path(manifest, &config.home_dir),
+                resolve_from_path: Some(candidate.install_root.to_string_lossy().to_string()),
                 artifact_type: ArtifactType::PluginManifest,
                 states: vec![NodeState::Declared, NodeState::Effective],
                 confidence: 0.95,
@@ -716,6 +728,7 @@ fn collect_plugins(
                 plugin_id: plugin_id.clone(),
                 path: readme.to_string_lossy().to_string(),
                 display_path: display_path(readme, &config.home_dir),
+                resolve_from_path: Some(candidate.install_root.to_string_lossy().to_string()),
                 artifact_type: ArtifactType::PluginDoc,
                 states: vec![NodeState::Declared],
                 confidence: 0.7,
@@ -741,27 +754,40 @@ fn discover_plugins(
     config_paths: &[PathBuf],
 ) -> Result<Vec<PluginCandidate>> {
     let mut candidates = HashMap::<String, PluginCandidate>::new();
+    let mut roots = plugin_system
+        .install_roots
+        .iter()
+        .map(|path| resolve_catalog_path(path, &config.home_dir, Some(repo_root)))
+        .map(|path| (path, "install_root"))
+        .collect::<Vec<_>>();
+
+    for candidate in discover_plugin_candidates(
+        &roots,
+        &plugin_system.manifest_paths,
+        config.scan_max_depth + 4,
+        config_paths,
+    ) {
+        merge_plugin_candidate(&mut candidates, candidate);
+    }
+
     match plugin_system.system.as_str() {
         "codex" => {
-            let mut roots = plugin_system
-                .install_roots
-                .iter()
-                .map(|path| resolve_catalog_path(path, &config.home_dir, Some(repo_root)))
-                .collect::<Vec<_>>();
-            roots.push(
+            roots.push((
                 config
                     .home_dir
                     .join(".codex")
                     .join(".tmp")
                     .join("plugins")
                     .join("plugins"),
-            );
-            for plugin_root in discover_plugin_roots(&roots, ".codex-plugin", config.scan_max_depth + 3)
-            {
-                merge_plugin_candidate(
-                    &mut candidates,
-                    plugin_candidate(&plugin_root, ".codex-plugin", "cache_layout", config_paths),
-                );
+                "cache_layout",
+            ));
+            for candidate in discover_plugin_candidates(
+                &roots,
+                &plugin_system.manifest_paths,
+                config.scan_max_depth + 4,
+                config_paths,
+            ) {
+                merge_plugin_candidate(&mut candidates, candidate);
             }
         }
         "claude" => {
@@ -770,30 +796,33 @@ fn discover_plugins(
                 .join(".claude")
                 .join("plugins")
                 .join("installed_plugins.json");
-            for plugin_root in read_claude_installed_paths(&installed_path) {
-                merge_plugin_candidate(
-                    &mut candidates,
-                    plugin_candidate(&plugin_root, ".claude-plugin", "install_index", config_paths),
-                );
-            }
-            let mut roots = plugin_system
-                .install_roots
-                .iter()
-                .map(|path| resolve_catalog_path(path, &config.home_dir, Some(repo_root)))
+            let installed_roots = read_claude_installed_paths(&installed_path)
+                .into_iter()
+                .map(|path| (path, "install_index"))
                 .collect::<Vec<_>>();
-            roots.push(config.home_dir.join(".claude").join("plugins").join("marketplaces"));
-            roots.push(config.home_dir.join(".claude").join("plugins").join("cache"));
-            for plugin_root in discover_plugin_roots(&roots, ".claude-plugin", config.scan_max_depth + 4)
-            {
-                let source = if plugin_root.to_string_lossy().contains("/marketplaces/") {
-                    "marketplace_layout"
-                } else {
-                    "cache_layout"
-                };
-                merge_plugin_candidate(
-                    &mut candidates,
-                    plugin_candidate(&plugin_root, ".claude-plugin", source, config_paths),
-                );
+            for candidate in discover_plugin_candidates(
+                &installed_roots,
+                &plugin_system.manifest_paths,
+                config.scan_max_depth + 4,
+                config_paths,
+            ) {
+                merge_plugin_candidate(&mut candidates, candidate);
+            }
+            roots.push((
+                config.home_dir.join(".claude").join("plugins").join("marketplaces"),
+                "marketplace_layout",
+            ));
+            roots.push((
+                config.home_dir.join(".claude").join("plugins").join("cache"),
+                "cache_layout",
+            ));
+            for candidate in discover_plugin_candidates(
+                &roots,
+                &plugin_system.manifest_paths,
+                config.scan_max_depth + 5,
+                config_paths,
+            ) {
+                merge_plugin_candidate(&mut candidates, candidate);
             }
         }
         _ => {}
@@ -803,9 +832,19 @@ fn discover_plugins(
     Ok(values)
 }
 
-fn discover_plugin_roots(roots: &[PathBuf], marker_dir: &str, max_depth: usize) -> Vec<PathBuf> {
-    let mut discovered = HashSet::new();
-    for root in roots {
+fn discover_plugin_candidates(
+    roots: &[(PathBuf, &str)],
+    manifest_paths: &[String],
+    max_depth: usize,
+    config_paths: &[PathBuf],
+) -> Vec<PluginCandidate> {
+    let manifest_paths = manifest_paths
+        .iter()
+        .map(PathBuf::from)
+        .filter(|path| path.components().count() > 0)
+        .collect::<Vec<_>>();
+    let mut discovered = HashMap::<(PathBuf, PathBuf), PluginCandidate>::new();
+    for (root, discovery_source) in roots {
         if !root.exists() {
             continue;
         }
@@ -813,34 +852,55 @@ fn discover_plugin_roots(roots: &[PathBuf], marker_dir: &str, max_depth: usize) 
             .max_depth(max_depth)
             .into_iter()
             .filter_map(Result::ok)
-            .filter(|entry| entry.file_type().is_dir())
+            .filter(|entry| entry.file_type().is_file())
         {
-            if entry.file_name().to_string_lossy() == marker_dir {
-                if let Some(parent) = entry.path().parent() {
-                    discovered.insert(parent.to_path_buf());
+            for manifest_suffix in &manifest_paths {
+                if entry.path().ends_with(manifest_suffix) {
+                    if let Some(plugin_root) =
+                        plugin_root_from_manifest(entry.path(), manifest_suffix)
+                    {
+                        let candidate = plugin_candidate(
+                            &plugin_root,
+                            entry.path(),
+                            discovery_source,
+                            config_paths,
+                        );
+                        discovered.insert(
+                            (candidate.install_root.clone(), entry.path().to_path_buf()),
+                            candidate,
+                        );
+                    }
                 }
             }
         }
     }
-    let mut roots = discovered.into_iter().collect::<Vec<_>>();
-    roots.sort();
-    roots
+    let mut candidates = discovered.into_values().collect::<Vec<_>>();
+    candidates.sort_by(|left, right| {
+        left.install_root
+            .cmp(&right.install_root)
+            .then(left.manifest_path.cmp(&right.manifest_path))
+    });
+    candidates
+}
+
+fn plugin_root_from_manifest(manifest_path: &Path, manifest_suffix: &Path) -> Option<PathBuf> {
+    let component_count = manifest_suffix.components().count();
+    let mut current = manifest_path.to_path_buf();
+    for _ in 0..component_count {
+        current = current.parent()?.to_path_buf();
+    }
+    Some(current)
 }
 
 fn plugin_candidate(
     plugin_root: &Path,
-    marker_dir: &str,
+    manifest_path: &Path,
     discovery_source: &str,
     config_paths: &[PathBuf],
 ) -> PluginCandidate {
-    let manifest_path = [
-        plugin_root.join(marker_dir).join("plugin.json"),
-        plugin_root.join("plugin.json"),
-        plugin_root.join("package.json"),
-    ]
-    .into_iter()
-    .find(|path| path.exists());
     let plugin_name = manifest_path
+        .exists()
+        .then(|| manifest_path.to_path_buf())
         .as_ref()
         .and_then(|path| read_plugin_name(path))
         .or_else(|| {
@@ -854,7 +914,8 @@ fn plugin_candidate(
         key: plugin_name.clone(),
         name: plugin_name.clone(),
         install_root: plugin_root.to_path_buf(),
-        manifest_path,
+        manifest_path: Some(manifest_path.to_path_buf()),
+        manifest_base_dir: manifest_path.parent().map(Path::to_path_buf),
         readme_path: plugin_root.join("README.md").exists().then(|| plugin_root.join("README.md")),
         discovery_sources: vec![discovery_source.to_string()],
         disabled: plugin_disabled(&plugin_name, config_paths),
@@ -869,6 +930,9 @@ fn merge_plugin_candidate(
     if let Some(existing) = candidates.get_mut(&key) {
         if existing.manifest_path.is_none() {
             existing.manifest_path = candidate.manifest_path.clone();
+        }
+        if existing.manifest_base_dir.is_none() {
+            existing.manifest_base_dir = candidate.manifest_base_dir.clone();
         }
         if existing.readme_path.is_none() {
             existing.readme_path = candidate.readme_path.clone();
@@ -938,6 +1002,7 @@ fn collect_reference_edges(
         };
         let context = ResolverContext {
             base_file: path,
+            resolve_from_dir: &artifact.resolve_from_dir,
             base_display_path: &artifact.display_path,
             artifact_type: &artifact.artifact_type,
             tool_family: &artifact.tool_family,
@@ -1030,23 +1095,35 @@ fn collect_reference_edges(
     Ok(collection)
 }
 
-fn artifact_node_from_graph(node: &GraphNode) -> Option<ArtifactNode> {
+fn artifact_node_from_graph(node: &GraphNode) -> Option<ScannableArtifact> {
     match node {
-        GraphNode::Artifact(artifact) => Some(artifact.clone()),
-        GraphNode::PluginArtifact(artifact) => Some(ArtifactNode {
+        GraphNode::Artifact(artifact) => Some(ScannableArtifact {
             id: artifact.id.clone(),
             path: artifact.path.clone(),
             display_path: artifact.display_path.clone(),
+            resolve_from_dir: Path::new(&artifact.path)
+                .parent()
+                .unwrap_or_else(|| Path::new(&artifact.path))
+                .to_path_buf(),
+            artifact_type: artifact.artifact_type.clone(),
+            tool_family: artifact.tool_family.clone(),
+        }),
+        GraphNode::PluginArtifact(artifact) => Some(ScannableArtifact {
+            id: artifact.id.clone(),
+            path: artifact.path.clone(),
+            display_path: artifact.display_path.clone(),
+            resolve_from_dir: artifact
+                .resolve_from_path
+                .as_deref()
+                .map(PathBuf::from)
+                .or_else(|| {
+                    Path::new(&artifact.path)
+                        .parent()
+                        .map(Path::to_path_buf)
+                })
+                .unwrap_or_else(|| PathBuf::from(&artifact.path)),
             artifact_type: artifact.artifact_type.clone(),
             tool_family: "plugin".to_string(),
-            scope_type: ScopeType::PluginProvided,
-            states: artifact.states.clone(),
-            confidence: artifact.confidence,
-            origin: "plugin".to_string(),
-            last_indexed_at: Utc::now(),
-            hash: file_hash(Path::new(&artifact.path)).unwrap_or_else(|_| "missing".to_string()),
-            mtime: None,
-            reason: artifact.reason.clone(),
         }),
         _ => None,
     }
@@ -2058,7 +2135,70 @@ mod tests {
                 _ => None,
             })
             .expect("plugin node");
+        assert_eq!(plugin.install_root, plugin_root.to_string_lossy());
         assert!(plugin.discovery_sources.iter().any(|source| source == "cache_layout"));
+    }
+
+    #[test]
+    fn codex_plugin_manifest_refs_resolve_from_plugin_root_in_surface_state() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let repo = home.join("git").join("demo");
+        fs::create_dir_all(repo.join(".git")).expect("git dir");
+        let plugin_root = home
+            .join(".codex")
+            .join(".tmp")
+            .join("plugins")
+            .join("plugins")
+            .join("vercel");
+        fs::create_dir_all(plugin_root.join(".codex-plugin")).expect("plugin dir");
+        fs::create_dir_all(plugin_root.join("skills")).expect("skills dir");
+        fs::write(
+            plugin_root.join(".codex-plugin").join("plugin.json"),
+            r#"{"name":"vercel","skills":"./skills/skill.md"}"#,
+        )
+        .expect("manifest");
+        fs::write(plugin_root.join("skills").join("skill.md"), "ok").expect("skill");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".codex")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        let inventory = collect_repo_files(&repo, 5);
+        let state = build_surface_state(
+            &config,
+            &store,
+            &crate::domain::ProjectSummary {
+                id: "demo".to_string(),
+                root_path: repo.to_string_lossy().to_string(),
+                display_path: display_path(&repo, &home),
+                name: "demo".to_string(),
+                indexed_at: Utc::now(),
+                status: "ready".to_string(),
+            },
+            &seed_catalog_map().expect("catalogs")["codex"],
+            &inventory,
+        )
+        .expect("state");
+
+        assert!(state.nodes.iter().any(|node| matches!(
+            node,
+            GraphNode::Artifact(artifact)
+                if artifact.path == plugin_root.join("skills").join("skill.md").to_string_lossy()
+        )));
+        assert!(!state.nodes.iter().any(|node| matches!(
+            node,
+            GraphNode::Artifact(artifact)
+                if artifact.path.contains("/.codex-plugin/skills/")
+                    || artifact.path.contains("\\.codex-plugin\\skills\\")
+        )));
     }
 
     #[test]
@@ -2126,9 +2266,73 @@ mod tests {
                 _ => None,
             })
             .expect("plugin node");
+        assert_eq!(plugin.install_root, install_root.to_string_lossy());
         assert!(plugin
             .discovery_sources
             .iter()
             .any(|source| source == "install_index"));
+    }
+
+    #[test]
+    fn claude_plugin_manifest_refs_resolve_from_plugin_root_in_surface_state() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let repo = home.join("git").join("demo");
+        fs::create_dir_all(repo.join(".git")).expect("git dir");
+        let plugin_root = home
+            .join(".claude")
+            .join("plugins")
+            .join("cache")
+            .join("market")
+            .join("vercel")
+            .join("1.0.0");
+        fs::create_dir_all(plugin_root.join(".claude-plugin")).expect("plugin dir");
+        fs::create_dir_all(plugin_root.join("agents")).expect("agents dir");
+        fs::write(
+            plugin_root.join(".claude-plugin").join("plugin.json"),
+            r#"{"name":"vercel","agents":["./agents/architect.md"]}"#,
+        )
+        .expect("manifest");
+        fs::write(plugin_root.join("agents").join("architect.md"), "ok").expect("agent");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".claude")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        let inventory = collect_repo_files(&repo, 5);
+        let state = build_surface_state(
+            &config,
+            &store,
+            &crate::domain::ProjectSummary {
+                id: "demo".to_string(),
+                root_path: repo.to_string_lossy().to_string(),
+                display_path: display_path(&repo, &home),
+                name: "demo".to_string(),
+                indexed_at: Utc::now(),
+                status: "ready".to_string(),
+            },
+            &seed_catalog_map().expect("catalogs")["claude_code"],
+            &inventory,
+        )
+        .expect("state");
+
+        assert!(state.nodes.iter().any(|node| matches!(
+            node,
+            GraphNode::Artifact(artifact)
+                if artifact.path == plugin_root.join("agents").join("architect.md").to_string_lossy()
+        )));
+        assert!(!state.nodes.iter().any(|node| matches!(
+            node,
+            GraphNode::Artifact(artifact)
+                if artifact.path.contains("/.claude-plugin/agents/")
+                    || artifact.path.contains("\\.claude-plugin\\agents\\")
+        )));
     }
 }

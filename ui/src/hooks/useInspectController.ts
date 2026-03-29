@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   buildInspectTree,
-  collectRequiredExpandedKeys,
+  collectAllDirectoryKeys,
+  collectSelectedAncestorKeys,
   type AppTab,
   HELPER_COMMAND,
   LABELS,
@@ -82,9 +83,11 @@ export function useInspectController() {
   const [apiBase, setApiBase] = useState(defaultApiBase);
   const [staleBuildMessage, setStaleBuildMessage] = useState("");
   const [expandedTreeKeys, setExpandedTreeKeys] = useState<string[]>([]);
+  const [hasStoredExpandedTreeState, setHasStoredExpandedTreeState] = useState(false);
   const [isStartingGlobalScan, setIsStartingGlobalScan] = useState(false);
   const [isStartingScopedReindex, setIsStartingScopedReindex] = useState(false);
   const clearScanJobTimer = useRef<number | null>(null);
+  const lastAutoExpandedSelection = useRef("");
 
   async function loadProjects() {
     const response = await fetch(apiUrl(apiBase, "/api/projects"));
@@ -207,9 +210,14 @@ export function useInspectController() {
   useEffect(() => {
     if (!selectedProject) {
       setExpandedTreeKeys([]);
+      setHasStoredExpandedTreeState(false);
+      lastAutoExpandedSelection.current = "";
       return;
     }
-    setExpandedTreeKeys(loadStored(treeStorageKey(selectedProject, selectedTool), [] as string[]));
+    const stored = window.localStorage.getItem(treeStorageKey(selectedProject, selectedTool));
+    setExpandedTreeKeys(stored ? (JSON.parse(stored) as string[]) : []);
+    setHasStoredExpandedTreeState(Boolean(stored));
+    lastAutoExpandedSelection.current = "";
   }, [selectedProject, selectedTool]);
 
   useEffect(() => {
@@ -347,13 +355,9 @@ export function useInspectController() {
   }, [apiBase, scanJob, selectedProject, selectedTool]);
 
   const tree = useMemo(() => buildInspectTree(graph), [graph]);
-  const requiredExpandedKeys = useMemo(
-    () => collectRequiredExpandedKeys(tree, selectedNode),
+  const selectedAncestorKeys = useMemo(
+    () => collectSelectedAncestorKeys(tree, selectedNode),
     [selectedNode, tree],
-  );
-  const visibleExpandedKeys = useMemo(
-    () => [...new Set([...expandedTreeKeys, ...requiredExpandedKeys])],
-    [expandedTreeKeys, requiredExpandedKeys],
   );
   const selectedProjectMeta = useMemo(
     () => projects.find((project) => project.id === selectedProject),
@@ -372,6 +376,34 @@ export function useInspectController() {
       : null;
   const globalScanJob =
     scanJob?.kind === "scan" && scanJob.scope_kind === "global" ? scanJob : null;
+
+  useEffect(() => {
+    if (!selectedProject || hasStoredExpandedTreeState || !tree.length) {
+      return;
+    }
+    setExpandedTreeKeys(collectAllDirectoryKeys(tree));
+    setHasStoredExpandedTreeState(true);
+  }, [hasStoredExpandedTreeState, selectedProject, tree]);
+
+  useEffect(() => {
+    if (!selectedProject || !selectedNode || !tree.length) {
+      return;
+    }
+
+    const selectionScope = `${selectedProject}:${selectedTool}:${selectedNode}`;
+    if (lastAutoExpandedSelection.current === selectionScope) {
+      return;
+    }
+    lastAutoExpandedSelection.current = selectionScope;
+
+    setExpandedTreeKeys((current) => {
+      const missing = selectedAncestorKeys.filter((key) => !current.includes(key));
+      if (!missing.length) {
+        return current;
+      }
+      return [...current, ...missing];
+    });
+  }, [selectedAncestorKeys, selectedNode, selectedProject, selectedTool, tree]);
 
   async function fetchDocs() {
     if (!selectedProject) return;
@@ -468,9 +500,7 @@ export function useInspectController() {
   }
 
   function toggleExpandedKey(key: string) {
-    if (requiredExpandedKeys.includes(key)) {
-      return;
-    }
+    setHasStoredExpandedTreeState(true);
     setExpandedTreeKeys((current) =>
       current.includes(key) ? current.filter((entry) => entry !== key) : [...current, key],
     );
@@ -515,8 +545,7 @@ export function useInspectController() {
     statusMessage,
     toggleExpandedKey,
     tree,
-    treeExpandedKeys: visibleExpandedKeys,
-    treeForcedExpandedKeys: requiredExpandedKeys,
+    treeExpandedKeys: expandedTreeKeys,
     copyHelperCommand,
   };
 }

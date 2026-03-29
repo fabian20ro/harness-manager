@@ -8,7 +8,6 @@ describe("InspectTree", () => {
     render(
       <InspectTree
         expandedKeys={[]}
-        forcedExpandedKeys={[]}
         selectedNodeId="node-1"
         onSelect={() => {}}
         onToggleExpand={() => {}}
@@ -50,7 +49,6 @@ describe("InspectTree", () => {
     render(
       <InspectTree
         expandedKeys={["~", "~/git", "~/git/demo"]}
-        forcedExpandedKeys={["~"]}
         selectedNodeId=""
         onSelect={onSelect}
         onToggleExpand={onToggleExpand}
@@ -107,5 +105,67 @@ describe("InspectTree", () => {
     expect(onToggleExpand).toHaveBeenCalledWith("~/git");
     fireEvent.click(screen.getByRole("button", { name: "Select AGENTS.md" }));
     expect(onSelect).toHaveBeenCalledWith("agents");
+  });
+
+  it("still allows collapsing an ancestor of the selected node", () => {
+    const onToggleExpand = vi.fn();
+
+    render(
+      <InspectTree
+        expandedKeys={["~", "~/git", "~/git/demo"]}
+        selectedNodeId="agents"
+        onSelect={() => {}}
+        onToggleExpand={onToggleExpand}
+        tree={[
+          {
+            key: "~",
+            label: "~",
+            path: "~",
+            children: [
+              {
+                key: "~/git",
+                label: "git",
+                path: "~/git",
+                children: [
+                  {
+                    key: "~/git/demo",
+                    label: "demo",
+                    path: "~/git/demo",
+                    children: [
+                      {
+                        key: "leaf:agents",
+                        label: "AGENTS.md",
+                        nodeId: "agents",
+                        path: "~/git/demo/AGENTS.md",
+                        children: [],
+                        states: ["effective"],
+                        usageState: "used",
+                        score: 0,
+                        isDirectory: false,
+                      },
+                    ],
+                    states: [],
+                    usageState: "unused",
+                    score: 4,
+                    isDirectory: true,
+                  },
+                ],
+                states: [],
+                usageState: "unused",
+                score: 4,
+                isDirectory: true,
+              },
+            ],
+            states: [],
+            usageState: "unused",
+            score: 4,
+            isDirectory: true,
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse git" }));
+    expect(onToggleExpand).toHaveBeenCalledWith("~/git");
   });
 });

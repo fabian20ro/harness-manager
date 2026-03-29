@@ -184,6 +184,7 @@ pub struct PluginArtifactNode {
     pub plugin_id: String,
     pub path: String,
     pub display_path: String,
+    pub resolve_from_path: Option<String>,
     pub artifact_type: ArtifactType,
     pub states: Vec<NodeState>,
     pub confidence: f32,

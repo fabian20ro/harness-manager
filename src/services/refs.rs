@@ -22,6 +22,7 @@ pub enum ReferenceSourceKind {
 #[derive(Clone, Debug)]
 pub struct ResolverContext<'a> {
     pub base_file: &'a Path,
+    pub resolve_from_dir: &'a Path,
     pub base_display_path: &'a str,
     pub artifact_type: &'a ArtifactType,
     pub tool_family: &'a str,
@@ -270,11 +271,7 @@ fn resolve_hit(
     let resolved_path = if let Some(stripped) = raw.strip_prefix("~/") {
         context.home_dir.join(stripped)
     } else {
-        context
-            .base_file
-            .parent()
-            .unwrap_or(context.base_file)
-            .join(raw)
+        context.resolve_from_dir.join(raw)
     };
     let normalized = resolved_path.components().collect::<PathBuf>();
 
@@ -533,6 +530,7 @@ mod tests {
         let refs = extract_references(
             &ResolverContext {
                 base_file: &base,
+                resolve_from_dir: temp.path(),
                 base_display_path: "AGENTS.md",
                 artifact_type: &ArtifactType::Instructions,
                 tool_family: "codex",
@@ -557,6 +555,7 @@ mod tests {
         let refs = extract_references(
             &ResolverContext {
                 base_file: &base,
+                resolve_from_dir: temp.path(),
                 base_display_path: "AGENTS.md",
                 artifact_type: &ArtifactType::Instructions,
                 tool_family: "codex",
@@ -584,6 +583,7 @@ mod tests {
         let refs = extract_references(
             &ResolverContext {
                 base_file: &base,
+                resolve_from_dir: temp.path(),
                 base_display_path: "CLAUDE.md",
                 artifact_type: &ArtifactType::Instructions,
                 tool_family: "claude",
@@ -615,6 +615,7 @@ mod tests {
         let refs = extract_references(
             &ResolverContext {
                 base_file: &base,
+                resolve_from_dir: temp.path(),
                 base_display_path: "CLAUDE.md",
                 artifact_type: &ArtifactType::Instructions,
                 tool_family: "claude",
@@ -645,6 +646,7 @@ mod tests {
         let refs = extract_references(
             &ResolverContext {
                 base_file: &base,
+                resolve_from_dir: temp.path(),
                 base_display_path: "config.toml",
                 artifact_type: &ArtifactType::Config,
                 tool_family: "codex",
@@ -669,6 +671,7 @@ mod tests {
         let refs = extract_references(
             &ResolverContext {
                 base_file: base,
+                resolve_from_dir: base.parent().expect("parent"),
                 base_display_path: "README.md",
                 artifact_type: &ArtifactType::LocalDoc,
                 tool_family: "misc",
@@ -678,5 +681,59 @@ mod tests {
         );
         assert!(refs.iter().any(|hit| hit.source == "quoted_reference"));
         assert!(refs.iter().any(|hit| !hit.promotes_effective));
+    }
+
+    #[test]
+    fn plugin_manifest_refs_resolve_from_plugin_root_for_codex_layouts() {
+        let temp = TempDir::new().expect("tempdir");
+        let plugin_root = temp.path().join("vercel");
+        let manifest_dir = plugin_root.join(".codex-plugin");
+        let manifest = manifest_dir.join("plugin.json");
+        fs::create_dir_all(plugin_root.join("skills")).expect("skills dir");
+        fs::create_dir_all(&manifest_dir).expect("manifest dir");
+        fs::write(plugin_root.join("skills").join("skill.md"), "ok").expect("skill");
+
+        let refs = extract_references(
+            &ResolverContext {
+                base_file: &manifest,
+                resolve_from_dir: &plugin_root,
+                base_display_path: "~/.codex/.tmp/plugins/plugins/vercel/.codex-plugin/plugin.json",
+                artifact_type: &ArtifactType::PluginManifest,
+                tool_family: "codex",
+                home_dir: Path::new("/Users/test"),
+            },
+            r#"{ "skills": "./skills/skill.md" }"#,
+        );
+
+        assert!(refs
+            .iter()
+            .any(|hit| hit.resolved_path == plugin_root.join("skills").join("skill.md")));
+    }
+
+    #[test]
+    fn plugin_manifest_refs_resolve_from_plugin_root_for_claude_layouts() {
+        let temp = TempDir::new().expect("tempdir");
+        let plugin_root = temp.path().join("everything-claude-code");
+        let manifest_dir = plugin_root.join(".claude-plugin");
+        let manifest = manifest_dir.join("plugin.json");
+        fs::create_dir_all(plugin_root.join("agents")).expect("agents dir");
+        fs::create_dir_all(&manifest_dir).expect("manifest dir");
+        fs::write(plugin_root.join("agents").join("architect.md"), "ok").expect("agent");
+
+        let refs = extract_references(
+            &ResolverContext {
+                base_file: &manifest,
+                resolve_from_dir: &plugin_root,
+                base_display_path: "~/.claude/plugins/marketplaces/everything-claude-code/.claude-plugin/plugin.json",
+                artifact_type: &ArtifactType::PluginManifest,
+                tool_family: "claude",
+                home_dir: Path::new("/Users/test"),
+            },
+            r#"{ "agents": ["./agents/architect.md"] }"#,
+        );
+
+        assert!(refs
+            .iter()
+            .any(|hit| hit.resolved_path == plugin_root.join("agents").join("architect.md")));
     }
 }

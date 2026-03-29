@@ -2,7 +2,7 @@
   "surface": "claude_cowork",
   "family": "claude",
   "display_name": "Claude Cowork",
-  "version": "2026-03-28",
+  "version": "2026-03-29",
   "support_level": "experimental",
   "sources": [
     {
@@ -43,7 +43,7 @@
   "plugin_system": {
     "system": "claude",
     "install_roots": ["~/.claude/plugins", "~/.config/claude/plugins"],
-    "manifest_paths": ["plugin.json", "package.json"],
+    "manifest_paths": [".claude-plugin/plugin.json", "plugin.json", "package.json"],
     "config_paths": ["~/.claude/config.json", "{project}/.claude/config.json"],
     "compatibility": ["claude_code", "claude_cowork"]
   }
