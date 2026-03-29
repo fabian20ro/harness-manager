@@ -20,13 +20,43 @@ pub async fn fetch_snapshot(
     project_id: Option<&str>,
     tool: Option<&str>,
 ) -> Result<(RemoteSnapshot, Option<SnapshotAssociation>)> {
+    // Existing validation (implementation not shown)
     validate_snapshot_url(config, url)?;
+
+    // Additional SSRF hardening: parse and validate the URL before requesting it.
+    let parsed_url = Url::parse(url).map_err(|e| anyhow!("invalid URL: {e}"))?;
+
+    // Only allow HTTP(S) schemes.
+    match parsed_url.scheme() {
+        "http" | "https" => {}
+        _ => {
+            return Err(anyhow!("unsupported URL scheme"));
+        }
+    }
+
+    // Basic host validation to prevent SSRF to local/internal services.
+    if let Some(host) = parsed_url.host_str() {
+        // Disallow obvious local hostnames.
+        let host_lower = host.to_ascii_lowercase();
+        if host_lower == "localhost" || host_lower.ends_with(".localhost") {
+            return Err(anyhow!("refusing to fetch from localhost"));
+        }
+
+        // If the host is a literal IP address, reject private/loopback/link-local ranges.
+        if let Ok(ip) = host.parse::<IpAddr>() {
+            if is_private_ip(ip) {
+                return Err(anyhow!("refusing to fetch from private or local IP address"));
+            }
+        }
+    } else {
+        return Err(anyhow!("URL must include a host"));
+    }
 
     let client = Client::builder()
         .timeout(Duration::from_secs(15))
         .redirect(reqwest::redirect::Policy::limited(5))
         .build()?;
-    let response = client.get(url).send().await?;
+    let response = client.get(parsed_url).send().await?;
     if let Some(length) = response.content_length() {
         if length > config.max_snapshot_bytes as u64 {
             return Err(anyhow!("snapshot too large"));
@@ -84,6 +114,24 @@ pub async fn fetch_snapshot(
     };
 
     Ok((snapshot, association))
+}
+
+// Helper to determine whether an IP address is in a private, loopback, or link-local range.
+fn is_private_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            v4.is_private()
+                || v4.is_loopback()
+                || v4.is_link_local()
+                || v4.octets()[0] == 169 && v4.octets()[1] == 254
+        }
+        IpAddr::V6(v6) => {
+            v6.is_loopback()
+                || v6.is_unspecified()
+                // Unique local addresses (fc00::/7)
+                || (v6.segments()[0] & 0xfe00) == 0xfc00
+        }
+    }
 }
 
 fn validate_snapshot_url(config: &AppConfig, raw_url: &str) -> Result<()> {
