@@ -7,6 +7,16 @@
 
 ---
 
+### [2026-03-29] Codex plugin skills as first-class artifacts
+
+**Context:** Codex plugin `skills` paths resolved on disk, but the graph still treated them as generic reference targets; imported plugin docs also assumed stale frontmatter-based Codex discovery instead of the current `SKILL.md` + `agents/openai.yaml` contract
+**Happened:** extended Codex plugin scanning to emit explicit `skill` plugin artifacts from manifest-declared `skills` paths; supported direct `SKILL.md` paths and recursive skill-directory discovery; parsed `SKILL.md` frontmatter `name` / `description`; attached optional `agents/openai.yaml` metadata plus legacy frontmatter keys as compatibility-only metadata; kept manifest-relative generic refs for secondary files; updated inspect tree leaf labeling to prefer skill names; switched default Codex docs URL to the skills docs; updated README contract notes; added backend and UI regressions; verified `cargo test`, `npm test -- --run`, `npm run build`
+**Outcome:** success
+**Insight:** plugin component existence and plugin reference traversal are different layers; once components like skills are modeled directly instead of inferred from generic reference edges, metadata, labeling, and broken-path handling all become straightforward
+**Promoted:** no
+
+---
+
 ### [2026-03-29] Tree collapse fix + plugin-root-relative manifest refs
 
 **Context:** inspect tree collapse sometimes failed; first-load tree not fully expanded; Codex/Claude plugin manifest refs pointed into `.codex-plugin` / `.claude-plugin` marker dirs instead of plugin roots, breaking skills/agents/commands reasons

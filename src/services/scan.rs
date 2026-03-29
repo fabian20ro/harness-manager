@@ -7,6 +7,7 @@ use std::{
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use globset::{Glob, GlobSetBuilder};
+use serde_json::{Map as JsonMap, Value as JsonValue};
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
@@ -46,6 +47,13 @@ struct PluginCandidate {
     readme_path: Option<PathBuf>,
     discovery_sources: Vec<String>,
     disabled: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+struct ParsedSkillMetadata {
+    name: Option<String>,
+    description: Option<String>,
+    metadata: Option<JsonValue>,
 }
 
 #[derive(Clone, Debug)]
@@ -704,6 +712,9 @@ fn collect_plugins(
                 plugin_id: plugin_id.clone(),
                 path: manifest.to_string_lossy().to_string(),
                 display_path: display_path(manifest, &config.home_dir),
+                name: None,
+                description: None,
+                metadata: None,
                 resolve_from_path: Some(candidate.install_root.to_string_lossy().to_string()),
                 artifact_type: ArtifactType::PluginManifest,
                 states: vec![NodeState::Declared, NodeState::Effective],
@@ -720,6 +731,29 @@ fn collect_plugins(
                 hardness: "hard".to_string(),
                 reason: "Plugin manifest belongs to plugin.".to_string(),
             });
+
+            if plugin_system.system == "codex" {
+                for skill_artifact in discover_codex_skill_artifacts(
+                    manifest,
+                    &candidate.install_root,
+                    &plugin_id,
+                    candidate.disabled,
+                    &config.home_dir,
+                )? {
+                    let skill_id = skill_artifact.id.clone();
+                    let skill_states = skill_artifact.states.clone();
+                    let skill_reason = skill_artifact.reason.clone();
+                    nodes.push(GraphNode::PluginArtifact(skill_artifact));
+                    verdicts.push(node_verdict(&skill_id, &skill_states, &skill_reason));
+                    edges.push(GraphEdge {
+                        from: plugin_id.clone(),
+                        to: skill_id,
+                        edge_type: EdgeType::ProvidesArtifact,
+                        hardness: "hard".to_string(),
+                        reason: "Plugin bundles skill artifact.".to_string(),
+                    });
+                }
+            }
         }
         if let Some(readme) = &candidate.readme_path {
             let artifact_id = stable_id("plugin_artifact", &readme.to_string_lossy());
@@ -728,6 +762,9 @@ fn collect_plugins(
                 plugin_id: plugin_id.clone(),
                 path: readme.to_string_lossy().to_string(),
                 display_path: display_path(readme, &config.home_dir),
+                name: None,
+                description: None,
+                metadata: None,
                 resolve_from_path: Some(candidate.install_root.to_string_lossy().to_string()),
                 artifact_type: ArtifactType::PluginDoc,
                 states: vec![NodeState::Declared],
@@ -949,6 +986,253 @@ fn merge_plugin_candidate(
         return;
     }
     candidates.insert(key, candidate);
+}
+
+fn discover_codex_skill_artifacts(
+    manifest_path: &Path,
+    plugin_root: &Path,
+    plugin_id: &str,
+    plugin_disabled: bool,
+    home_dir: &Path,
+) -> Result<Vec<PluginArtifactNode>> {
+    let Some(manifest) = read_plugin_manifest(manifest_path) else {
+        return Ok(Vec::new());
+    };
+    let mut artifacts = Vec::new();
+    let mut seen = HashSet::new();
+
+    for raw_skill_path in manifest_skill_entries(&manifest) {
+        let resolved = resolve_plugin_component_path(plugin_root, &raw_skill_path);
+        if !resolved.exists() {
+            artifacts.push(PluginArtifactNode {
+                id: stable_id("plugin_artifact", &resolved.to_string_lossy()),
+                plugin_id: plugin_id.to_string(),
+                path: resolved.to_string_lossy().to_string(),
+                display_path: display_path(&resolved, home_dir),
+                name: None,
+                description: None,
+                metadata: None,
+                resolve_from_path: Some(plugin_root.to_string_lossy().to_string()),
+                artifact_type: ArtifactType::Skill,
+                states: missing_skill_states(plugin_disabled),
+                confidence: 0.92,
+                reason: format!("Plugin declares missing skill path: {}.", raw_skill_path),
+            });
+            continue;
+        }
+
+        for skill_path in resolve_skill_paths(&resolved) {
+            if !seen.insert(skill_path.clone()) {
+                continue;
+            }
+            artifacts.push(build_skill_artifact(
+                plugin_id,
+                plugin_root,
+                &skill_path,
+                plugin_disabled,
+                home_dir,
+            ));
+        }
+    }
+
+    artifacts.sort_by(|left, right| left.path.cmp(&right.path));
+    Ok(artifacts)
+}
+
+fn read_plugin_manifest(path: &Path) -> Option<JsonValue> {
+    let text = fs::read_to_string(path).ok()?;
+    serde_json::from_str::<JsonValue>(&text).ok()
+}
+
+fn manifest_skill_entries(value: &JsonValue) -> Vec<String> {
+    match value.get("skills") {
+        Some(JsonValue::String(path)) => vec![path.clone()],
+        Some(JsonValue::Array(values)) => values
+            .iter()
+            .filter_map(|value| value.as_str().map(ToString::to_string))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn resolve_plugin_component_path(plugin_root: &Path, raw_path: &str) -> PathBuf {
+    let relative = raw_path
+        .strip_prefix("./")
+        .or_else(|| raw_path.strip_prefix(".\\"))
+        .unwrap_or(raw_path);
+    plugin_root.join(relative)
+}
+
+fn resolve_skill_paths(path: &Path) -> Vec<PathBuf> {
+    if path.is_file() {
+        return (path.file_name().and_then(|name| name.to_str()) == Some("SKILL.md"))
+            .then(|| vec![path.to_path_buf()])
+            .unwrap_or_default();
+    }
+    if !path.is_dir() {
+        return Vec::new();
+    }
+
+    let direct_skill = path.join("SKILL.md");
+    if direct_skill.is_file() {
+        return vec![direct_skill];
+    }
+
+    let mut skill_paths = WalkDir::new(path)
+        .min_depth(1)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_file())
+        .filter(|entry| entry.file_name().to_string_lossy() == "SKILL.md")
+        .map(|entry| entry.into_path())
+        .collect::<Vec<_>>();
+    skill_paths.sort();
+    skill_paths
+}
+
+fn build_skill_artifact(
+    plugin_id: &str,
+    plugin_root: &Path,
+    skill_path: &Path,
+    plugin_disabled: bool,
+    home_dir: &Path,
+) -> PluginArtifactNode {
+    let parsed = parse_skill_metadata(skill_path);
+    PluginArtifactNode {
+        id: stable_id("plugin_artifact", &skill_path.to_string_lossy()),
+        plugin_id: plugin_id.to_string(),
+        path: skill_path.to_string_lossy().to_string(),
+        display_path: display_path(skill_path, home_dir),
+        name: parsed.name,
+        description: parsed.description,
+        metadata: parsed.metadata,
+        resolve_from_path: Some(plugin_root.to_string_lossy().to_string()),
+        artifact_type: ArtifactType::Skill,
+        states: existing_skill_states(plugin_disabled),
+        confidence: if plugin_disabled { 0.82 } else { 0.96 },
+        reason: "Plugin bundles skill artifact.".to_string(),
+    }
+}
+
+fn existing_skill_states(plugin_disabled: bool) -> Vec<NodeState> {
+    let mut states = vec![NodeState::Declared];
+    if plugin_disabled {
+        states.push(NodeState::Inactive);
+    } else {
+        states.push(NodeState::Effective);
+    }
+    states
+}
+
+fn missing_skill_states(plugin_disabled: bool) -> Vec<NodeState> {
+    let mut states = vec![
+        NodeState::Declared,
+        NodeState::BrokenReference,
+        NodeState::Unresolved,
+    ];
+    if plugin_disabled {
+        states.push(NodeState::Inactive);
+    }
+    states
+}
+
+fn parse_skill_metadata(skill_path: &Path) -> ParsedSkillMetadata {
+    let Ok(content) = fs::read_to_string(skill_path) else {
+        return ParsedSkillMetadata::default();
+    };
+    let Some(frontmatter) = extract_frontmatter(&content) else {
+        return attach_openai_metadata(skill_path, ParsedSkillMetadata::default());
+    };
+    let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(&frontmatter) else {
+        return attach_openai_metadata(skill_path, ParsedSkillMetadata::default());
+    };
+
+    let mut metadata = ParsedSkillMetadata {
+        name: yaml_field_as_string(&value, "name"),
+        description: yaml_field_as_string(&value, "description"),
+        metadata: None,
+    };
+
+    let legacy = legacy_frontmatter_metadata(&value);
+    metadata = attach_openai_metadata(skill_path, metadata);
+    if let Some(legacy_value) = legacy {
+        merge_skill_metadata(&mut metadata, "legacy_frontmatter", legacy_value);
+    }
+    metadata
+}
+
+fn extract_frontmatter(content: &str) -> Option<String> {
+    let mut lines = content.lines();
+    if lines.next()?.trim() != "---" {
+        return None;
+    }
+    let mut frontmatter = Vec::new();
+    for line in lines {
+        if line.trim() == "---" {
+            return Some(frontmatter.join("\n"));
+        }
+        frontmatter.push(line);
+    }
+    None
+}
+
+fn yaml_field_as_string(value: &serde_yaml::Value, key: &str) -> Option<String> {
+    value
+        .as_mapping()
+        .and_then(|mapping| mapping.get(&serde_yaml::Value::String(key.to_string())))
+        .and_then(|value| value.as_str())
+        .map(ToString::to_string)
+}
+
+fn legacy_frontmatter_metadata(value: &serde_yaml::Value) -> Option<JsonValue> {
+    let mapping = value.as_mapping()?;
+    let mut legacy = JsonMap::new();
+    for key in [
+        "retrieval",
+        "intents",
+        "entities",
+        "pathPatterns",
+        "bashPatterns",
+    ] {
+        let Some(entry) = mapping.get(&serde_yaml::Value::String(key.to_string())) else {
+            continue;
+        };
+        let Ok(json_value) = serde_json::to_value(entry) else {
+            continue;
+        };
+        legacy.insert(key.to_string(), json_value);
+    }
+    (!legacy.is_empty()).then(|| JsonValue::Object(legacy))
+}
+
+fn attach_openai_metadata(skill_path: &Path, mut metadata: ParsedSkillMetadata) -> ParsedSkillMetadata {
+    let skill_dir = skill_path.parent().unwrap_or(skill_path);
+    for candidate in [
+        skill_dir.join("agents").join("openai.yaml"),
+        skill_dir.join("agents").join("openai.yml"),
+    ] {
+        let Ok(content) = fs::read_to_string(&candidate) else {
+            continue;
+        };
+        let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(&content) else {
+            continue;
+        };
+        if let Ok(json_value) = serde_json::to_value(value) {
+            merge_skill_metadata(&mut metadata, "openai", json_value);
+            break;
+        }
+    }
+    metadata
+}
+
+fn merge_skill_metadata(metadata: &mut ParsedSkillMetadata, key: &str, value: JsonValue) {
+    let mut root = metadata
+        .metadata
+        .take()
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    root.insert(key.to_string(), value);
+    metadata.metadata = Some(JsonValue::Object(root));
 }
 
 fn read_claude_installed_paths(path: &Path) -> Vec<PathBuf> {
@@ -2245,13 +2529,17 @@ mod tests {
             .join("plugins")
             .join("vercel");
         fs::create_dir_all(plugin_root.join(".codex-plugin")).expect("plugin dir");
-        fs::create_dir_all(plugin_root.join("skills")).expect("skills dir");
+        fs::create_dir_all(plugin_root.join("skills").join("skill")).expect("skills dir");
         fs::write(
             plugin_root.join(".codex-plugin").join("plugin.json"),
-            r#"{"name":"vercel","skills":"./skills/skill.md"}"#,
+            r#"{"name":"vercel","skills":"./skills/skill/SKILL.md"}"#,
         )
         .expect("manifest");
-        fs::write(plugin_root.join("skills").join("skill.md"), "ok").expect("skill");
+        fs::write(
+            plugin_root.join("skills").join("skill").join("SKILL.md"),
+            "---\nname: Example Skill\ndescription: Example description\n---\n",
+        )
+        .expect("skill");
 
         let config = AppConfig {
             home_dir: home.clone(),
@@ -2283,8 +2571,13 @@ mod tests {
 
         assert!(state.nodes.iter().any(|node| matches!(
             node,
-            GraphNode::Artifact(artifact)
-                if artifact.path == plugin_root.join("skills").join("skill.md").to_string_lossy()
+            GraphNode::PluginArtifact(artifact)
+                if artifact.path
+                    == plugin_root
+                        .join("skills")
+                        .join("skill")
+                        .join("SKILL.md")
+                        .to_string_lossy()
         )));
         assert!(!state.nodes.iter().any(|node| matches!(
             node,
@@ -2307,16 +2600,26 @@ mod tests {
             .join("plugins")
             .join("vercel");
         fs::create_dir_all(plugin_root.join(".codex-plugin")).expect("plugin dir");
-        fs::create_dir_all(plugin_root.join("skills").join("nested")).expect("skills dir");
+        fs::create_dir_all(plugin_root.join("skills").join("root")).expect("skills dir");
+        fs::create_dir_all(plugin_root.join("skills").join("nested").join("deep"))
+            .expect("nested skills dir");
         fs::write(
             plugin_root.join(".codex-plugin").join("plugin.json"),
             r#"{"name":"vercel","skills":"./skills/","mcpServers":"./.mcp.json","hooks":"./hooks.json"}"#,
         )
         .expect("manifest");
-        fs::write(plugin_root.join("skills").join("root.md"), "root").expect("root skill");
         fs::write(
-            plugin_root.join("skills").join("nested").join("deep.md"),
-            "deep",
+            plugin_root.join("skills").join("root").join("SKILL.md"),
+            "---\nname: Root Skill\ndescription: Root description\n---\n",
+        )
+        .expect("root skill");
+        fs::write(
+            plugin_root
+                .join("skills")
+                .join("nested")
+                .join("deep")
+                .join("SKILL.md"),
+            "---\nname: Deep Skill\ndescription: Deep description\n---\n",
         )
         .expect("deep skill");
         fs::write(plugin_root.join(".mcp.json"), "{}").expect("mcp");
@@ -2353,13 +2656,15 @@ mod tests {
         let skills_dir = plugin_root.join("skills").to_string_lossy().to_string();
         let root_skill = plugin_root
             .join("skills")
-            .join("root.md")
+            .join("root")
+            .join("SKILL.md")
             .to_string_lossy()
             .to_string();
         let nested_skill = plugin_root
             .join("skills")
             .join("nested")
-            .join("deep.md")
+            .join("deep")
+            .join("SKILL.md")
             .to_string_lossy()
             .to_string();
         let mcp_file = plugin_root.join(".mcp.json").to_string_lossy().to_string();
@@ -2371,11 +2676,13 @@ mod tests {
         )));
         assert!(state.nodes.iter().any(|node| matches!(
             node,
-            GraphNode::Artifact(artifact) if artifact.path == root_skill
+            GraphNode::PluginArtifact(artifact)
+                if artifact.path == root_skill && artifact.name.as_deref() == Some("Root Skill")
         )));
         assert!(state.nodes.iter().any(|node| matches!(
             node,
-            GraphNode::Artifact(artifact) if artifact.path == nested_skill
+            GraphNode::PluginArtifact(artifact)
+                if artifact.path == nested_skill && artifact.name.as_deref() == Some("Deep Skill")
         )));
         assert!(state.nodes.iter().any(|node| matches!(
             node,
@@ -2386,8 +2693,8 @@ mod tests {
             GraphNode::Artifact(artifact) if artifact.path == hooks_file
         )));
 
-        let root_skill_id = stable_id("reference", &root_skill);
-        let nested_skill_id = stable_id("reference", &nested_skill);
+        let root_skill_id = stable_id("plugin_artifact", &root_skill);
+        let nested_skill_id = stable_id("plugin_artifact", &nested_skill);
         let skills_dir_id = stable_id("reference", &skills_dir);
         assert!(state.edges.iter().any(|edge| {
             edge.from == skills_dir_id && edge.to == root_skill_id && matches!(edge.edge_type, EdgeType::References)
@@ -2401,6 +2708,161 @@ mod tests {
         assert!(state.verdicts.iter().any(|verdict| {
             verdict.entity_id == nested_skill_id && verdict.states.contains(&NodeState::Effective)
         }));
+    }
+
+    #[test]
+    fn codex_skill_metadata_is_parsed_from_frontmatter_and_openai_yaml() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let repo = home.join("git").join("demo");
+        fs::create_dir_all(repo.join(".git")).expect("git dir");
+        let plugin_root = home
+            .join(".codex")
+            .join(".tmp")
+            .join("plugins")
+            .join("plugins")
+            .join("vercel");
+        fs::create_dir_all(plugin_root.join(".codex-plugin")).expect("plugin dir");
+        fs::create_dir_all(plugin_root.join("skills").join("nextjs").join("agents"))
+            .expect("agents dir");
+        fs::write(
+            plugin_root.join(".codex-plugin").join("plugin.json"),
+            r#"{"name":"vercel","skills":"./skills/"}"#,
+        )
+        .expect("manifest");
+        fs::write(
+            plugin_root.join("skills").join("nextjs").join("SKILL.md"),
+            "---\nname: Next.js App Router\ndescription: Build and debug App Router projects\nretrieval:\n  aliases: [nextjs, app-router]\nintents: [routing, caching]\n---\n# body\n",
+        )
+        .expect("skill");
+        fs::write(
+            plugin_root
+                .join("skills")
+                .join("nextjs")
+                .join("agents")
+                .join("openai.yaml"),
+            "displayName: Next.js\ninvocation:\n  when: manual\n",
+        )
+        .expect("openai yaml");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".codex")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        let inventory = collect_repo_files(&repo, 5);
+        let state = build_surface_state(
+            &config,
+            &store,
+            &crate::domain::ProjectSummary {
+                id: "demo".to_string(),
+                root_path: repo.to_string_lossy().to_string(),
+                display_path: display_path(&repo, &home),
+                name: "demo".to_string(),
+                indexed_at: Utc::now(),
+                status: "ready".to_string(),
+            },
+            &seed_catalog_map().expect("catalogs")["codex"],
+            &inventory,
+        )
+        .expect("state");
+
+        let skill = state
+            .nodes
+            .iter()
+            .find_map(|node| match node {
+                GraphNode::PluginArtifact(artifact)
+                    if artifact.path
+                        == plugin_root
+                            .join("skills")
+                            .join("nextjs")
+                            .join("SKILL.md")
+                            .to_string_lossy() => Some(artifact),
+                _ => None,
+            })
+            .expect("skill node");
+
+        assert_eq!(skill.name.as_deref(), Some("Next.js App Router"));
+        assert_eq!(
+            skill.description.as_deref(),
+            Some("Build and debug App Router projects")
+        );
+        let metadata = skill.metadata.as_ref().expect("skill metadata");
+        assert_eq!(metadata["openai"]["displayName"], "Next.js");
+        assert_eq!(
+            metadata["legacy_frontmatter"]["retrieval"]["aliases"][0],
+            "nextjs"
+        );
+        assert_eq!(
+            metadata["legacy_frontmatter"]["intents"][1],
+            "caching"
+        );
+    }
+
+    #[test]
+    fn codex_missing_declared_skill_paths_are_broken_plugin_artifacts() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let repo = home.join("git").join("demo");
+        fs::create_dir_all(repo.join(".git")).expect("git dir");
+        let plugin_root = home
+            .join(".codex")
+            .join(".tmp")
+            .join("plugins")
+            .join("plugins")
+            .join("vercel");
+        fs::create_dir_all(plugin_root.join(".codex-plugin")).expect("plugin dir");
+        fs::write(
+            plugin_root.join(".codex-plugin").join("plugin.json"),
+            r#"{"name":"vercel","skills":"./skills/missing/SKILL.md"}"#,
+        )
+        .expect("manifest");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".codex")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        let inventory = collect_repo_files(&repo, 5);
+        let state = build_surface_state(
+            &config,
+            &store,
+            &crate::domain::ProjectSummary {
+                id: "demo".to_string(),
+                root_path: repo.to_string_lossy().to_string(),
+                display_path: display_path(&repo, &home),
+                name: "demo".to_string(),
+                indexed_at: Utc::now(),
+                status: "ready".to_string(),
+            },
+            &seed_catalog_map().expect("catalogs")["codex"],
+            &inventory,
+        )
+        .expect("state");
+
+        let missing_skill = state
+            .nodes
+            .iter()
+            .find_map(|node| match node {
+                GraphNode::PluginArtifact(artifact)
+                    if artifact.path.ends_with("skills/missing/SKILL.md") => Some(artifact),
+                _ => None,
+            })
+            .expect("missing skill node");
+        assert!(missing_skill.states.contains(&NodeState::BrokenReference));
+        assert!(missing_skill.states.contains(&NodeState::Unresolved));
     }
 
     #[test]

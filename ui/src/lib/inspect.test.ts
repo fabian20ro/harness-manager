@@ -41,11 +41,19 @@ const graph: SurfaceState = {
       path: "/Users/fabian/git/harness-manager/AGENTS.md",
       display_path: "~/git/harness-manager/AGENTS.md",
     },
+    {
+      id: "plugin-skill",
+      kind: "plugin_artifact",
+      path: "/Users/fabian/.codex/.tmp/plugins/plugins/vercel/skills/nextjs/SKILL.md",
+      display_path: "~/.codex/.tmp/plugins/plugins/vercel/skills/nextjs/SKILL.md",
+      name: "Next.js App Router",
+    },
   ],
   edges: [],
   verdicts: [
     { entity_id: "global-config", states: ["effective"], why_included: [], why_excluded: [] },
     { entity_id: "repo-file", states: ["referenced_only"], why_included: [], why_excluded: [] },
+    { entity_id: "plugin-skill", states: ["effective"], why_included: [], why_excluded: [] },
   ],
 };
 
@@ -73,6 +81,20 @@ describe("inspect helpers", () => {
     expect(collectSelectedAncestorKeys(tree, "repo-file")).toEqual(
       expect.arrayContaining(["~", "~/git", "~/git/harness-manager"]),
     );
+  });
+
+  it("prefers named plugin skill labels over raw SKILL.md leaf names", () => {
+    const tree = buildInspectTree(graph);
+    const codexRoot = tree[0]?.children.find((child) => child.label === ".codex");
+    const skillLeaf = codexRoot
+      ?.children.find((child) => child.label === ".tmp")
+      ?.children.find((child) => child.label === "plugins")
+      ?.children.find((child) => child.label === "plugins")
+      ?.children.find((child) => child.label === "vercel")
+      ?.children.find((child) => child.label === "skills")
+      ?.children.find((child) => child.label === "nextjs")
+      ?.children[0];
+    expect(skillLeaf?.label).toBe("Next.js App Router");
   });
 
   it("preserves selected node when still present", () => {

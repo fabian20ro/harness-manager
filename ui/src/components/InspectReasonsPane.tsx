@@ -9,6 +9,7 @@ type InspectReasonsPaneProps = {
 export function InspectReasonsPane({ currentNode, inspect }: InspectReasonsPaneProps) {
   return (
     <div className="inspect-panel-stack">
+      {typeof currentNode?.name === "string" ? <h3>{currentNode.name}</h3> : null}
       {currentNode?.display_path ? (
         <p className="inspect-path">{formatDisplayPath(String(currentNode.display_path))}</p>
       ) : null}

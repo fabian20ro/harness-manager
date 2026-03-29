@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
@@ -184,6 +185,9 @@ pub struct PluginArtifactNode {
     pub plugin_id: String,
     pub path: String,
     pub display_path: String,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub metadata: Option<JsonValue>,
     pub resolve_from_path: Option<String>,
     pub artifact_type: ArtifactType,
     pub states: Vec<NodeState>,
@@ -244,7 +248,10 @@ impl GraphNode {
             GraphNode::ToolContext(node) => node.tool.display_name.clone(),
             GraphNode::Artifact(node) => node.display_path.clone(),
             GraphNode::Plugin(node) => node.name.clone(),
-            GraphNode::PluginArtifact(node) => node.display_path.clone(),
+            GraphNode::PluginArtifact(node) => node
+                .name
+                .clone()
+                .unwrap_or_else(|| node.display_path.clone()),
             GraphNode::RemoteSnapshot(node) => node.url.clone(),
         }
     }

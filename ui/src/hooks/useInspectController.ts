@@ -86,7 +86,7 @@ export function useInspectController() {
   const [graph, setGraph] = useState<SurfaceState | null>(null);
   const [selectedNode, setSelectedNode] = useState<string>("");
   const [inspect, setInspect] = useState<InspectPayload | null>(null);
-  const [docUrl, setDocUrl] = useState("https://developers.openai.com/codex/plugins");
+  const [docUrl, setDocUrl] = useState("https://developers.openai.com/codex/skills");
   const [statusMessage, setStatusMessage] = useState("");
   const [inspectStatusMessage, setInspectStatusMessage] = useState("");
   const [scanJob, setScanJob] = useState<JobStatus | null>(null);

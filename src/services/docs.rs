@@ -153,7 +153,7 @@ mod tests {
     fn allows_https_public_hosts() {
         let config = test_config();
         assert!(
-            validate_snapshot_url(&config, "https://developers.openai.com/codex/plugins").is_ok()
+            validate_snapshot_url(&config, "https://developers.openai.com/codex/skills").is_ok()
         );
     }
 }

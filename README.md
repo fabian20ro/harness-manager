@@ -37,6 +37,7 @@ Plugin support now:
 - local Codex plugins
 - local Claude/Cowork plugin system
 - plugin manifests + plugin docs become graph nodes
+- Codex plugin skills become first-class plugin artifacts
 - compatibility edges shown where catalog says so
 
 ## Truth model
@@ -69,6 +70,17 @@ Current reference intelligence:
 - typed TOML / JSON / YAML config fields
 - plugin manifests
 - generic markdown / quoted / import-like fallback refs
+
+Codex plugin skill model:
+- `.codex-plugin/plugin.json` `skills` paths are resolved relative to the plugin root
+- valid Codex skills are discovered from `SKILL.md` files, not generic markdown files
+- `SKILL.md` metadata uses the current Codex contract: required `name` + `description`
+- optional Codex skill metadata is read from `agents/openai.yaml`
+- legacy frontmatter keys such as `retrieval.aliases` or `intents` are preserved as compatibility metadata only
+
+Relevant Codex docs:
+- [Skills](https://developers.openai.com/codex/skills)
+- [Build plugins](https://developers.openai.com/codex/plugins/build)
 
 ## Helper API + storage
 

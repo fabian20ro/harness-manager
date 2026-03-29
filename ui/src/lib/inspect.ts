@@ -49,6 +49,7 @@ export type InspectTreeNode = {
 type TrieNode = {
   key: string;
   segment: string;
+  displayLabel?: string;
   path: string;
   nodeId?: string;
   states: string[];
@@ -91,12 +92,18 @@ export function buildInspectTree(graph: SurfaceState | null): InspectTreeNode[] 
 
   const rootMap = new Map<string, TrieNode>();
   const entries = [
-    { nodeId: `project:${graph.project.id}`, path: graph.project.display_path, states: ["effective"] },
+    {
+      nodeId: `project:${graph.project.id}`,
+      path: graph.project.display_path,
+      label: undefined,
+      states: ["effective"],
+    },
     ...graph.nodes
       .filter((node) => node.kind !== "project")
       .map((node) => ({
         nodeId: node.id,
         path: getNodeDisplayPath(node),
+        label: typeof node.name === "string" ? node.name : undefined,
         states: graph.verdicts.find((verdict) => verdict.entity_id === node.id)?.states ?? [],
       }))
       .filter((entry) => isPathBearing(entry.path)),
@@ -113,6 +120,7 @@ export function buildInspectTree(graph: SurfaceState | null): InspectTreeNode[] 
       current = ensureChild(current.children, currentPath, segment, currentPath);
     }
     current.nodeId = entry.nodeId;
+    current.displayLabel = entry.label;
     current.states = entry.states;
   }
 
@@ -169,6 +177,7 @@ function ensureChild(map: Map<string, TrieNode>, key: string, segment: string, p
     key,
     segment,
     path,
+    displayLabel: undefined,
     states: [],
     children: new Map<string, TrieNode>(),
   };
@@ -185,7 +194,7 @@ function finalizeTree(node: TrieNode): InspectTreeNode {
 
   return {
     key: node.key,
-    label: node.segment,
+    label: node.displayLabel ?? node.segment,
     nodeId: node.nodeId,
     path: node.path,
     children,
