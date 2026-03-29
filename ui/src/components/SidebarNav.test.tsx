@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { SidebarNav } from "./SidebarNav";
 
 describe("SidebarNav", () => {
-  it("renders emoji-prefixed nav and helper copy button", () => {
+  it("renders emoji-prefixed nav without helper command UI", () => {
     render(
       <SidebarNav
         activeTab="Projects"
@@ -13,14 +13,13 @@ describe("SidebarNav", () => {
         onSelectTab={() => {}}
         onToggleCollapse={() => {}}
         onReindex={() => {}}
-        onCopyHelperCommand={() => {}}
       />,
     );
 
     expect(screen.getByText("Projects")).toBeInTheDocument();
     expect(screen.getByText("📁")).toBeInTheDocument();
-    expect(screen.getByText("cargo run")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
+    expect(screen.queryByText("cargo run")).not.toBeInTheDocument();
+    expect(screen.getByText("Harness Inspector")).toBeInTheDocument();
   });
 
   it("calls collapse toggle", () => {
@@ -33,11 +32,26 @@ describe("SidebarNav", () => {
         onSelectTab={() => {}}
         onToggleCollapse={onToggleCollapse}
         onReindex={() => {}}
-        onCopyHelperCommand={() => {}}
       />,
     );
 
     fireEvent.click(view.getByRole("button", { name: "Collapse sidebar" }));
     expect(onToggleCollapse).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows compact H brand when collapsed", () => {
+    render(
+      <SidebarNav
+        activeTab="Projects"
+        collapsed
+        statusMessage="Ready."
+        onSelectTab={() => {}}
+        onToggleCollapse={() => {}}
+        onReindex={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("H")).toBeInTheDocument();
+    expect(screen.queryByText("Harness Inspector")).not.toBeInTheDocument();
   });
 });

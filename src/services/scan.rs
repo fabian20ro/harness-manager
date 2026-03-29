@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     fs,
     path::{Path, PathBuf},
 };
@@ -21,6 +21,20 @@ use crate::{
     services::refs::{extract_references, ResolverContext},
     storage::Store,
 };
+
+#[derive(Clone, Debug)]
+struct PromotableEdge {
+    from: String,
+    to: String,
+    reason: String,
+}
+
+#[derive(Default)]
+struct ReferenceCollection {
+    edges: Vec<GraphEdge>,
+    verdicts: Vec<Verdict>,
+    promotable_edges: Vec<PromotableEdge>,
+}
 
 pub fn refresh_catalogs(
     store: &Store,
@@ -290,8 +304,11 @@ fn build_surface_state(
         nodes.insert(node.id().to_string(), node);
     }
 
-    let reference_edges = collect_reference_edges(&mut nodes, &tool_node, config, indexed_at)?;
-    edges.extend(reference_edges);
+    let reference_collection =
+        collect_reference_edges(&mut nodes, &tool_node, config, indexed_at)?;
+    edges.extend(reference_collection.edges);
+    verdicts.extend(reference_collection.verdicts);
+    promote_effective_closure(&mut nodes, &edges, &mut verdicts, &reference_collection.promotable_edges);
 
     Ok(SurfaceState {
         project: project.clone(),
@@ -540,33 +557,22 @@ fn collect_reference_edges(
     tool_node: &GraphNode,
     config: &AppConfig,
     indexed_at: DateTime<Utc>,
-) -> Result<Vec<GraphEdge>> {
-    let mut edges = Vec::new();
-    let artifact_nodes = nodes
+) -> Result<ReferenceCollection> {
+    let mut collection = ReferenceCollection::default();
+    let mut existing_path_to_id = nodes
         .values()
-        .filter_map(|node| match node {
-            GraphNode::Artifact(artifact) => Some(artifact.clone()),
-            GraphNode::PluginArtifact(artifact) => Some(ArtifactNode {
-                id: artifact.id.clone(),
-                path: artifact.path.clone(),
-                display_path: artifact.display_path.clone(),
-                artifact_type: artifact.artifact_type.clone(),
-                tool_family: "plugin".to_string(),
-                scope_type: ScopeType::PluginProvided,
-                states: artifact.states.clone(),
-                confidence: artifact.confidence,
-                origin: "plugin".to_string(),
-                last_indexed_at: indexed_at,
-                hash: file_hash(Path::new(&artifact.path))
-                    .unwrap_or_else(|_| "missing".to_string()),
-                mtime: None,
-                reason: artifact.reason.clone(),
-            }),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
+        .filter_map(path_node_id)
+        .collect::<HashMap<_, _>>();
+    let mut artifact_nodes = nodes
+        .values()
+        .filter_map(artifact_node_from_graph)
+        .collect::<VecDeque<_>>();
+    let mut scanned_ids = HashSet::new();
 
-    for artifact in artifact_nodes {
+    while let Some(artifact) = artifact_nodes.pop_front() {
+        if !scanned_ids.insert(artifact.id.clone()) {
+            continue;
+        }
         let path = Path::new(&artifact.path);
         if !path.is_file() {
             continue;
@@ -582,9 +588,18 @@ fn collect_reference_edges(
             home_dir: &config.home_dir,
         };
         for hit in extract_references(&context, &content) {
-            let target_id = stable_id("reference", &hit.resolved_path.to_string_lossy());
+            let target_path = hit.resolved_path.to_string_lossy().to_string();
+            let target_id = existing_path_to_id
+                .get(&target_path)
+                .cloned()
+                .unwrap_or_else(|| stable_id("reference", &target_path));
             let target_display_path = display_path(&hit.resolved_path, &config.home_dir);
             if !nodes.contains_key(&target_id) {
+                let target_reason = if hit.broken {
+                    format!("{} Missing target: {}", hit.reason, target_display_path)
+                } else {
+                    format!("{} Target: {}", hit.reason, target_display_path)
+                };
                 nodes.insert(
                     target_id.clone(),
                     GraphNode::Artifact(ArtifactNode {
@@ -609,15 +624,24 @@ fn collect_reference_edges(
                         hash: file_hash(&hit.resolved_path)
                             .unwrap_or_else(|_| "missing".to_string()),
                         mtime: fs::metadata(&hit.resolved_path).ok().and_then(mtime_utc),
-                        reason: if hit.broken {
-                            format!("{} Missing target: {}", hit.reason, target_display_path)
-                        } else {
-                            format!("{} Target: {}", hit.reason, target_display_path)
-                        },
+                        reason: target_reason.clone(),
                     }),
                 );
+                existing_path_to_id.insert(target_path.clone(), target_id.clone());
+                collection.verdicts.push(node_verdict(
+                    &target_id,
+                    if hit.broken {
+                        &[NodeState::BrokenReference, NodeState::Unresolved]
+                    } else {
+                        &[NodeState::ReferencedOnly]
+                    },
+                    &target_reason,
+                ));
             }
-            edges.push(GraphEdge {
+            if let Some(target_artifact) = nodes.get(&target_id).and_then(artifact_node_from_graph) {
+                artifact_nodes.push_back(target_artifact);
+            }
+            collection.edges.push(GraphEdge {
                 from: artifact.id.clone(),
                 to: target_id.clone(),
                 edge_type: hit.edge_type,
@@ -631,16 +655,193 @@ fn collect_reference_edges(
                     format!("{} Source: {}.", hit.reason, artifact.display_path)
                 },
             });
-            edges.push(GraphEdge {
+            collection.edges.push(GraphEdge {
                 from: tool_node.id().to_string(),
-                to: target_id,
+                to: target_id.clone(),
                 edge_type: EdgeType::References,
                 hardness: "soft".to_string(),
                 reason: "Tool context reaches reference target through artifact graph.".to_string(),
             });
+            if hit.promotes_effective && !hit.broken {
+                collection.promotable_edges.push(PromotableEdge {
+                    from: artifact.id.clone(),
+                    to: target_id,
+                    reason: hit.reason,
+                });
+            }
         }
     }
-    Ok(edges)
+    Ok(collection)
+}
+
+fn artifact_node_from_graph(node: &GraphNode) -> Option<ArtifactNode> {
+    match node {
+        GraphNode::Artifact(artifact) => Some(artifact.clone()),
+        GraphNode::PluginArtifact(artifact) => Some(ArtifactNode {
+            id: artifact.id.clone(),
+            path: artifact.path.clone(),
+            display_path: artifact.display_path.clone(),
+            artifact_type: artifact.artifact_type.clone(),
+            tool_family: "plugin".to_string(),
+            scope_type: ScopeType::PluginProvided,
+            states: artifact.states.clone(),
+            confidence: artifact.confidence,
+            origin: "plugin".to_string(),
+            last_indexed_at: Utc::now(),
+            hash: file_hash(Path::new(&artifact.path)).unwrap_or_else(|_| "missing".to_string()),
+            mtime: None,
+            reason: artifact.reason.clone(),
+        }),
+        _ => None,
+    }
+}
+
+fn path_node_id(node: &GraphNode) -> Option<(String, String)> {
+    match node {
+        GraphNode::Artifact(artifact) => Some((artifact.path.clone(), artifact.id.clone())),
+        GraphNode::PluginArtifact(artifact) => Some((artifact.path.clone(), artifact.id.clone())),
+        _ => None,
+    }
+}
+
+fn promote_effective_closure(
+    nodes: &mut BTreeMap<String, GraphNode>,
+    edges: &[GraphEdge],
+    verdicts: &mut Vec<Verdict>,
+    promotable_reference_edges: &[PromotableEdge],
+) {
+    let promotable_refs = promotable_reference_edges
+        .iter()
+        .map(|edge| ((edge.from.clone(), edge.to.clone()), edge.reason.clone()))
+        .collect::<HashMap<_, _>>();
+    let mut adjacency = HashMap::<String, Vec<(String, String)>>::new();
+    for edge in edges {
+        let reason = if matches!(edge.edge_type, EdgeType::Imports | EdgeType::Loads) {
+            Some(edge.reason.clone())
+        } else if matches!(edge.edge_type, EdgeType::References) {
+            promotable_refs
+                .get(&(edge.from.clone(), edge.to.clone()))
+                .cloned()
+        } else {
+            None
+        };
+        if let Some(reason) = reason {
+            adjacency
+                .entry(edge.from.clone())
+                .or_default()
+                .push((edge.to.clone(), reason));
+        }
+    }
+
+    let mut queue = VecDeque::new();
+    let mut seed_paths = HashMap::<String, Vec<String>>::new();
+    for (node_id, node) in nodes.iter() {
+        if node.states().contains(&NodeState::Effective) {
+            queue.push_back(node_id.clone());
+            seed_paths.insert(node_id.clone(), vec![node_id.clone()]);
+        }
+    }
+
+    let mut expanded = HashSet::new();
+    while let Some(source_id) = queue.pop_front() {
+        if !expanded.insert(source_id.clone()) {
+            continue;
+        }
+        let Some(source_path) = seed_paths.get(&source_id).cloned() else {
+            continue;
+        };
+        let source_label = nodes
+            .get(&source_id)
+            .map(GraphNode::label)
+            .unwrap_or_else(|| source_id.clone());
+        for (target_id, reason) in adjacency.get(&source_id).cloned().unwrap_or_default() {
+            if source_id == target_id {
+                continue;
+            }
+            let Some(target_node) = nodes.get_mut(&target_id) else {
+                continue;
+            };
+            if node_is_broken(target_node) {
+                continue;
+            }
+            let mut promoted = false;
+            let target_label = target_node.label();
+            match target_node {
+                GraphNode::Artifact(artifact) => {
+                    promoted = promote_node_states(&mut artifact.states, &mut artifact.confidence);
+                    if promoted {
+                        artifact.reason = format!(
+                            "{} Included transitively from {}.",
+                            artifact.reason, source_label
+                        );
+                    }
+                }
+                GraphNode::PluginArtifact(artifact) => {
+                    promoted = promote_node_states(&mut artifact.states, &mut artifact.confidence);
+                    if promoted {
+                        artifact.reason = format!(
+                            "{} Included transitively from {}.",
+                            artifact.reason, source_label
+                        );
+                    }
+                }
+                _ => {}
+            }
+
+            let mut path = source_path.clone();
+            path.push(target_id.clone());
+            let verdict = upsert_verdict(verdicts, &target_id, target_node.states());
+            if promoted {
+                verdict.why_included.push(format!(
+                    "Effective via {} -> {} ({reason})",
+                    source_label, target_label
+                ));
+                verdict.provenance_paths.push(path.clone());
+                queue.push_back(target_id.clone());
+            }
+            if !seed_paths.contains_key(&target_id)
+                || seed_paths[&target_id].len() > path.len()
+            {
+                seed_paths.insert(target_id, path);
+            }
+        }
+    }
+}
+
+fn node_is_broken(node: &GraphNode) -> bool {
+    node.states().contains(&NodeState::BrokenReference)
+        || node.states().contains(&NodeState::Unresolved)
+}
+
+fn promote_node_states(states: &mut Vec<NodeState>, confidence: &mut f32) -> bool {
+    if states.contains(&NodeState::Effective) {
+        return false;
+    }
+    states.retain(|state| *state != NodeState::ReferencedOnly);
+    states.push(NodeState::Effective);
+    *confidence = confidence.max(0.92);
+    true
+}
+
+fn upsert_verdict<'a>(
+    verdicts: &'a mut Vec<Verdict>,
+    entity_id: &str,
+    states: Vec<NodeState>,
+) -> &'a mut Verdict {
+    if let Some(index) = verdicts.iter().position(|verdict| verdict.entity_id == entity_id) {
+        let verdict = &mut verdicts[index];
+        verdict.states = states;
+        return verdict;
+    }
+    verdicts.push(Verdict {
+        entity_id: entity_id.to_string(),
+        states,
+        why_included: Vec::new(),
+        why_excluded: Vec::new(),
+        shadowed_by: Vec::new(),
+        provenance_paths: Vec::new(),
+    });
+    verdicts.last_mut().expect("verdict inserted")
 }
 
 fn collect_repo_files(root: &Path, max_depth: usize) -> Vec<String> {
@@ -981,5 +1182,190 @@ mod tests {
             .edges
             .iter()
             .any(|edge| edge.reason.contains("Typed config reference found")));
+    }
+
+    #[test]
+    fn instruction_directive_references_become_effective_recursively() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let repo = home.join("git").join("demo");
+        fs::create_dir_all(repo.join(".git")).expect("git dir");
+        fs::write(repo.join("AGENTS.md"), "Read CLAUDE.md\n").expect("agents");
+        fs::write(repo.join("CLAUDE.md"), "@./nested.md\n").expect("claude");
+        fs::write(repo.join("nested.md"), "ok").expect("nested");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".codex")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        let inventory = collect_repo_files(&repo, 5);
+        let state = build_surface_state(
+            &config,
+            &store,
+            &crate::domain::ProjectSummary {
+                id: "demo".to_string(),
+                root_path: repo.to_string_lossy().to_string(),
+                display_path: display_path(&repo, &home),
+                name: "demo".to_string(),
+                indexed_at: Utc::now(),
+                status: "ready".to_string(),
+            },
+            &seed_catalog_map().expect("catalogs")["codex"],
+            &inventory,
+        )
+        .expect("state");
+
+        let claude = state
+            .nodes
+            .iter()
+            .find_map(|node| match node {
+                GraphNode::Artifact(artifact) if artifact.display_path.ends_with("CLAUDE.md") => {
+                    Some(artifact)
+                }
+                _ => None,
+            })
+            .expect("claude node");
+        assert!(claude.states.contains(&NodeState::Effective));
+
+        let nested = state
+            .nodes
+            .iter()
+            .find_map(|node| match node {
+                GraphNode::Artifact(artifact) if artifact.display_path.ends_with("nested.md") => {
+                    Some(artifact)
+                }
+                _ => None,
+            })
+            .expect("nested node");
+        assert!(nested.states.contains(&NodeState::Effective));
+    }
+
+    #[test]
+    fn sentence_style_instruction_references_become_effective() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let repo = home.join("git").join("demo");
+        fs::create_dir_all(repo.join(".git")).expect("git dir");
+        fs::write(repo.join("AGENTS.md"), "Read CLAUDE.md\n").expect("agents");
+        fs::write(
+            repo.join("CLAUDE.md"),
+            "If prioritization is involved, read ANALYSIS.md and TODOS.md directly before planning.\n",
+        )
+        .expect("claude");
+        fs::write(repo.join("ANALYSIS.md"), "ok").expect("analysis");
+        fs::write(repo.join("TODOS.md"), "ok").expect("todos");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".codex")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        let inventory = collect_repo_files(&repo, 5);
+        let state = build_surface_state(
+            &config,
+            &store,
+            &crate::domain::ProjectSummary {
+                id: "demo".to_string(),
+                root_path: repo.to_string_lossy().to_string(),
+                display_path: display_path(&repo, &home),
+                name: "demo".to_string(),
+                indexed_at: Utc::now(),
+                status: "ready".to_string(),
+            },
+            &seed_catalog_map().expect("catalogs")["codex"],
+            &inventory,
+        )
+        .expect("state");
+
+        for expected in ["ANALYSIS.md", "TODOS.md"] {
+            let node = state
+                .nodes
+                .iter()
+                .find_map(|node| match node {
+                    GraphNode::Artifact(artifact) if artifact.display_path.ends_with(expected) => {
+                        Some(artifact)
+                    }
+                    _ => None,
+                })
+                .expect("referenced node");
+            assert!(node.states.contains(&NodeState::Effective));
+        }
+    }
+
+    #[test]
+    fn typed_config_reference_targets_become_effective() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let repo = home.join("git").join("demo");
+        fs::create_dir_all(repo.join(".git")).expect("git dir");
+        fs::create_dir_all(repo.join(".codex")).expect("codex dir");
+        fs::write(
+            repo.join(".codex").join("config.toml"),
+            "[instructions]\ninclude = \"./policy.md\"\n",
+        )
+        .expect("config");
+        fs::write(repo.join(".codex").join("policy.md"), "ok").expect("policy");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".codex")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        let inventory = collect_repo_files(&repo, 5);
+        let state = build_surface_state(
+            &config,
+            &store,
+            &crate::domain::ProjectSummary {
+                id: "demo".to_string(),
+                root_path: repo.to_string_lossy().to_string(),
+                display_path: display_path(&repo, &home),
+                name: "demo".to_string(),
+                indexed_at: Utc::now(),
+                status: "ready".to_string(),
+            },
+            &seed_catalog_map().expect("catalogs")["codex"],
+            &inventory,
+        )
+        .expect("state");
+
+        let policy = state
+            .nodes
+            .iter()
+            .find_map(|node| match node {
+                GraphNode::Artifact(artifact) if artifact.display_path.ends_with("policy.md") => {
+                    Some(artifact)
+                }
+                _ => None,
+            })
+            .expect("policy node");
+        assert!(policy.states.contains(&NodeState::Effective));
+        let verdict = state
+            .verdicts
+            .iter()
+            .find(|verdict| verdict.entity_id == policy.id)
+            .expect("policy verdict");
+        assert!(verdict
+            .why_included
+            .iter()
+            .any(|line| line.contains("Effective via")));
     }
 }

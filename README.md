@@ -1,28 +1,110 @@
 # Harness Inspector
 
-Local-first inspector pentru repo-uri și suprafețe AI coding. Stack:
-- helper local în Rust, API pe `http://127.0.0.1:8765`
-- UI React/Vite în `ui/`
-- store JSON persistent sub `~/.harness-inspector`
+Harness Inspector = local-first inspector for AI coding harnesses.
 
-## Features v0.1
+Current shape:
+- Rust helper on `127.0.0.1:8765`
+- React/Vite UI in [`/Users/fabian/git/harness-manager/ui`](./ui)
+- JSON store under `~/.harness-inspector`
+- graph-backed inspection model; UI = tree/graph projection over same data
 
-- project scan din roots configurabile, cu default `~/git`
-- suprafețe: Claude Code, Claude Cowork, Codex, Codex CLI, Copilot CLI, IntelliJ/Copilot, OpenCode, Antigravity
-- graph intern cu artifacts, refs, plugin-uri, snapshots
-- plugin support local pentru Codex și Claude plugin systems
-- docs fetch + local snapshot
-- observed refresh manual, bazat pe procese locale
+## How it works now
 
-## Run
+Runtime split:
+- helper scans repo roots, global dirs, plugin install roots, docs snapshots
+- helper builds per-tool `SurfaceState` with nodes, edges, verdicts
+- UI reads helper API locally
+- GitHub Pages hosts only static UI; Pages UI still talks to local helper by default
 
-Terminal 1:
+Main tabs:
+- `Projects`: discovered git repos from configured roots; default root = `~/git`
+- `Docs`: fetch remote docs, save normalized local snapshots, attach to selected project/tool
+- `Tool`: choose surface context
+- `Inspect`: effective context tree, viewer, reasons, refs
+- `Activity`: manual `observed` refresh from local process evidence
+
+Supported tool contexts:
+- Claude Code
+- Claude Cowork
+- Codex
+- Codex CLI
+- Copilot CLI
+- IntelliJ/Copilot
+- OpenCode
+- Antigravity
+
+Plugin support now:
+- local Codex plugins
+- local Claude/Cowork plugin system
+- plugin manifests + plugin docs become graph nodes
+- compatibility edges shown where catalog says so
+
+## Truth model
+
+The helper does not collapse everything into “active”.
+
+Primary states:
+- `declared`
+- `effective`
+- `observed`
+
+Additional states:
+- `referenced_only`
+- `shadowed`
+- `ignored`
+- `misleading`
+- `inactive`
+- `unresolved`
+- `broken_reference`
+- `installed`
+- `configured`
+
+Current effective behavior:
+- seed artifacts come from tool catalog rules + known locations
+- base-file refs and typed config refs can recursively promote downstream files into `effective`
+- generic text mentions stay exploratory by default and do not promote into effective closure
+
+Current reference intelligence:
+- base instruction files such as `AGENTS.md` / `CLAUDE.md`
+- typed TOML / JSON / YAML config fields
+- plugin manifests
+- generic markdown / quoted / import-like fallback refs
+
+## Helper API + storage
+
+Current API:
+- `GET /api/projects`
+- `POST /api/scan`
+- `GET /api/projects/:id/graph?tool=...`
+- `GET /api/projects/:id/inspect?tool=...&node=...`
+- `POST /api/docs/fetch`
+- `POST /api/activity/refresh`
+- `POST /api/catalogs/refresh`
+- `GET /api/jobs/:id`
+- `GET /api/events`
+
+Persistent store layout:
+- `settings.json`
+- `roots.json`
+- `catalogs/<surface>/<version>.json`
+- `projects/<project-id>/inventory.json`
+- `projects/<project-id>/graph.nodes.json`
+- `projects/<project-id>/graph.edges.json`
+- `projects/<project-id>/tool-state/<surface>.json`
+- `snapshots/...`
+- `activity/...`
+
+Catalogs are versioned JSON. They define known locations, artifact rules, plugin systems, and observed probes. Current refresh path is manual and schema-driven.
+
+## Local dev
+
+Helper:
 
 ```bash
 cargo run
 ```
 
-Terminal 2:
+UI dev:
 
 ```bash
 cd ui
@@ -30,35 +112,65 @@ npm install --cache .npm-cache
 npm run dev
 ```
 
-API helper servește și `ui/dist` dacă rulezi:
+Built UI through helper:
 
 ```bash
 cd ui
-npm run build
+npm run build -- --emptyOutDir
 ```
 
-apoi deschizi [http://127.0.0.1:8765](http://127.0.0.1:8765).
+Then open [http://127.0.0.1:8765](http://127.0.0.1:8765).
 
 ## GitHub Pages + Releases
 
-- GitHub Pages publică UI-ul static din `ui/dist`.
-- UI-ul publicat pe Pages presupune că helper-ul local rulează pe `http://127.0.0.1:8765`.
-- API base poate fi schimbat din UI, din query string `?apiBase=...`, sau din `localStorage`.
-- build-ul publicat include `build-meta.json`; pagina verifică la 180s și la revenirea în tab dacă există deploy nou și face reload cu cache-busting query param.
-- Workflow-ul `Deploy Pages` publică UI-ul pe Pages la push pe `main`.
-- Workflow-ul `Release Helper` publică arhive macOS (`arm64` și `x64`) în GitHub Releases la tag-uri `v*` sau manual.
+Pages:
+- Pages publishes static UI from `ui/dist`
+- Pages build emits `build-meta.json`
+- browser checks every 180s, and when tab becomes visible again, for newer deploys
+- if newer build exists, page reloads with cache-busting query param
 
-## Security defaults
+Pages/local-helper contract:
+- default API base on `github.io` = `http://127.0.0.1:8765`
+- API base can also come from `?apiBase=...`
+- chosen API base persists in `localStorage`
 
-- helper-ul ascultă doar pe `127.0.0.1:8765`
-- CORS allowlist: localhost dev + `https://fabian20ro.github.io`
-- docs fetch permite implicit doar `https://` și blochează `localhost`, loopback și adrese private
-- override-uri:
-  - `HARNESS_ALLOWED_ORIGINS`
-  - `HARNESS_ALLOW_INSECURE_DOC_HOSTS=true`
+Releases:
+- GitHub Releases publish macOS helper archives for `arm64` and `x64`
+- for local development, normal path stays `cargo run`
+
+## Security model
+
+Current defaults:
+- helper binds only to `127.0.0.1:8765`
+- CORS allowlist only; includes localhost dev and Pages origin
+- docs fetch is HTTPS-only by default
+- docs fetch blocks localhost, loopback, and private-network targets
+- snapshot fetch has timeout, redirect cap, and byte cap
+
+Relevant env overrides:
+- `HARNESS_ALLOWED_ORIGINS`
+- `HARNESS_ALLOW_INSECURE_DOC_HOSTS=true`
+
+## Limitations
+
+Current limitations:
+- macOS only
+- read-only product; no write-back
+- `observed` = best-effort manual refresh, not full runtime truth
+- OpenCode / Antigravity coverage still seed-catalog quality
+- semantic reference extraction is targeted, not general language intelligence
 
 ## Test
 
+Backend:
+
 ```bash
 cargo test
+```
+
+UI:
+
+```bash
+cd ui
+npm test
 ```

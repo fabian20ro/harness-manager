@@ -1,4 +1,4 @@
-import { HELPER_COMMAND, MENU_ITEMS, type AppTab } from "../lib/inspect";
+import { MENU_ITEMS, type AppTab } from "../lib/inspect";
 
 type SidebarNavProps = {
   activeTab: AppTab;
@@ -7,7 +7,6 @@ type SidebarNavProps = {
   onSelectTab: (tab: AppTab) => void;
   onToggleCollapse: () => void;
   onReindex: () => void;
-  onCopyHelperCommand: () => void;
 };
 
 export function SidebarNav({
@@ -17,15 +16,14 @@ export function SidebarNav({
   onSelectTab,
   onToggleCollapse,
   onReindex,
-  onCopyHelperCommand,
 }: SidebarNavProps) {
   return (
     <aside className={collapsed ? "nav collapsed" : "nav"}>
       <div className="brand">
         <div className="brand-row">
-          <div>
-            <p>Harness Inspector</p>
-            {!collapsed ? <span>Truth over elegance.</span> : null}
+          <div className="brand-copy">
+            <span className="brand-mark">H</span>
+            {!collapsed ? <span className="brand-name">Harness Inspector</span> : null}
           </div>
           <button
             className="collapse-toggle"
@@ -37,18 +35,6 @@ export function SidebarNav({
           </button>
         </div>
       </div>
-
-      {!collapsed ? (
-        <div className="helper-box">
-          <span className="helper-label">Local helper</span>
-          <code>{HELPER_COMMAND}</code>
-          <button onClick={onCopyHelperCommand}>Copy</button>
-        </div>
-      ) : (
-        <button className="icon-only" onClick={onCopyHelperCommand} title="Copy cargo run">
-          📋
-        </button>
-      )}
 
       {MENU_ITEMS.map((item) => (
         <button

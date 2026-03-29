@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { HelperCommand } from "./components/HelperCommand";
 import { InspectTree } from "./components/InspectTree";
 import { SidebarNav } from "./components/SidebarNav";
 import { ViewerPane } from "./components/ViewerPane";
@@ -8,6 +9,7 @@ import {
   type AppTab,
   formatDisplayPath,
   getNodeLabel,
+  HELPER_COMMAND,
   LABELS,
   pickNextSelectedNode,
   TOOL_IDS,
@@ -97,8 +99,8 @@ export function App() {
 
   async function copyHelperCommand() {
     try {
-      await navigator.clipboard.writeText("cargo run");
-      setStatusMessage("Copied cargo run.");
+      await navigator.clipboard.writeText(HELPER_COMMAND);
+      setStatusMessage(`Copied ${HELPER_COMMAND}.`);
     } catch (error) {
       setStatusMessage(`Clipboard copy failed: ${String(error)}`);
     }
@@ -269,7 +271,6 @@ export function App() {
         onSelectTab={setActiveTab}
         onToggleCollapse={() => setSidebarCollapsed((value) => !value)}
         onReindex={runScan}
-        onCopyHelperCommand={() => void copyHelperCommand()}
       />
 
       <main className="workspace">
@@ -295,14 +296,17 @@ export function App() {
               ))}
             </select>
           </label>
-          <label className="api-field">
-            API Base
-            <input
-              value={apiBase}
-              onChange={(event) => setApiBase(event.target.value)}
-              placeholder="http://127.0.0.1:8765"
-            />
-          </label>
+          <div className="toolbar-api-group">
+            <label className="api-field">
+              API Base
+              <input
+                value={apiBase}
+                onChange={(event) => setApiBase(event.target.value)}
+                placeholder="http://127.0.0.1:8765"
+              />
+            </label>
+            <HelperCommand onCopy={() => void copyHelperCommand()} />
+          </div>
         </header>
 
         {staleBuildMessage ? <p className="stale-banner">{staleBuildMessage}</p> : null}

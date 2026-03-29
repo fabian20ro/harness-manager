@@ -8,6 +8,14 @@ use serde_json::Value as JsonValue;
 
 use crate::domain::{ArtifactType, EdgeType};
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ReferenceSourceKind {
+    GenericText,
+    InstructionImport,
+    TypedConfigField,
+    PluginManifest,
+}
+
 #[derive(Clone, Debug)]
 pub struct ResolverContext<'a> {
     pub base_file: &'a Path,
@@ -23,9 +31,11 @@ pub struct ReferenceHit {
     pub resolved_path: PathBuf,
     pub edge_type: EdgeType,
     pub broken: bool,
+    pub source_kind: ReferenceSourceKind,
     pub source: String,
     pub reason: String,
     pub confidence: f32,
+    pub promotes_effective: bool,
 }
 
 pub fn extract_references(context: &ResolverContext<'_>, content: &str) -> Vec<ReferenceHit> {
@@ -51,7 +61,7 @@ fn base_file_resolver(context: &ResolverContext<'_>, content: &str) -> Vec<Refer
 
 fn instruction_imports(context: &ResolverContext<'_>, content: &str) -> Vec<ReferenceHit> {
     let import = Regex::new(r"(?m)^\s*@([~./][^\s]+)\s*$").expect("instruction import regex");
-    import
+    let mut hits = import
         .captures_iter(content)
         .filter_map(|capture| capture.get(1).map(|matched| matched.as_str()))
         .filter_map(|raw| {
@@ -59,10 +69,48 @@ fn instruction_imports(context: &ResolverContext<'_>, content: &str) -> Vec<Refe
                 context,
                 raw,
                 EdgeType::Imports,
+                ReferenceSourceKind::InstructionImport,
                 "instruction_import",
                 format!("Instruction import found in {}.", context.base_display_path),
                 0.97,
+                true,
             )
+        })
+        .collect::<Vec<_>>();
+    hits.extend(instruction_directives(context, content));
+    hits
+}
+
+fn instruction_directives(context: &ResolverContext<'_>, content: &str) -> Vec<ReferenceHit> {
+    let directive_verb =
+        Regex::new(r"(?i)\b(read|see|use|follow|load|consult)\b").expect("directive verb regex");
+    let file_token =
+        Regex::new(r"`?([A-Za-z0-9_./~\-]+\.(?:md|toml|json|yaml|yml|txt))`?")
+            .expect("directive file token regex");
+
+    content
+        .lines()
+        .filter(|line| directive_verb.is_match(line))
+        .flat_map(|line| {
+            file_token
+                .captures_iter(line)
+                .filter_map(|capture| capture.get(1).map(|matched| matched.as_str()))
+                .filter_map(|raw| {
+                    resolve_hit(
+                        context,
+                        raw,
+                        EdgeType::References,
+                        ReferenceSourceKind::InstructionImport,
+                        "instruction_directive",
+                        format!(
+                            "Instruction directive found in {}.",
+                            context.base_display_path
+                        ),
+                        0.93,
+                        true,
+                    )
+                })
+                .collect::<Vec<_>>()
         })
         .collect()
 }
@@ -104,9 +152,11 @@ fn generic_text_resolver(context: &ResolverContext<'_>, content: &str) -> Vec<Re
                 context,
                 raw,
                 EdgeType::References,
+                ReferenceSourceKind::GenericText,
                 "markdown_reference",
                 format!("Markdown reference found in {}.", context.base_display_path),
                 0.72,
+                false,
             ) {
                 hits.push(hit);
             }
@@ -118,12 +168,14 @@ fn generic_text_resolver(context: &ResolverContext<'_>, content: &str) -> Vec<Re
                 context,
                 raw,
                 EdgeType::Imports,
+                ReferenceSourceKind::GenericText,
                 "generic_import",
                 format!(
                     "Import-like reference found in {}.",
                     context.base_display_path
                 ),
                 0.74,
+                false,
             ) {
                 hits.push(hit);
             }
@@ -135,12 +187,14 @@ fn generic_text_resolver(context: &ResolverContext<'_>, content: &str) -> Vec<Re
                 context,
                 raw,
                 EdgeType::References,
+                ReferenceSourceKind::GenericText,
                 "quoted_reference",
                 format!(
                     "Quoted path-like reference found in {}.",
                     context.base_display_path
                 ),
                 0.68,
+                false,
             ) {
                 hits.push(hit);
             }
@@ -153,9 +207,11 @@ fn resolve_hit(
     context: &ResolverContext<'_>,
     raw: &str,
     edge_type: EdgeType,
+    source_kind: ReferenceSourceKind,
     source: &str,
     reason: String,
     confidence: f32,
+    promotes_effective: bool,
 ) -> Option<ReferenceHit> {
     if raw.starts_with("http://") || raw.starts_with("https://") || raw.starts_with('#') {
         return None;
@@ -177,9 +233,11 @@ fn resolve_hit(
         broken: !normalized.exists(),
         resolved_path: normalized,
         edge_type,
+        source_kind,
         source: source.to_string(),
         reason,
         confidence,
+        promotes_effective,
     })
 }
 
@@ -334,7 +392,16 @@ fn maybe_push_typed_hit(
         context,
         text,
         EdgeType::References,
-        "typed_config",
+        if matches!(context.artifact_type, ArtifactType::PluginManifest) {
+            ReferenceSourceKind::PluginManifest
+        } else {
+            ReferenceSourceKind::TypedConfigField
+        },
+        if matches!(context.artifact_type, ArtifactType::PluginManifest) {
+            "plugin_manifest"
+        } else {
+            "typed_config"
+        },
         format!(
             "Typed config reference found in key `{}` of {}.",
             if key_path.is_empty() {
@@ -345,6 +412,7 @@ fn maybe_push_typed_hit(
             context.base_display_path
         ),
         0.9,
+        true,
     ) {
         hits.push(hit);
     }
@@ -401,7 +469,7 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use super::{extract_references, ResolverContext};
+    use super::{extract_references, ReferenceSourceKind, ResolverContext};
     use crate::domain::{ArtifactType, EdgeType};
 
     #[test]
@@ -426,6 +494,60 @@ mod tests {
         assert!(refs.iter().any(|hit| hit.edge_type == EdgeType::Imports));
         assert!(refs.iter().any(|hit| hit.source == "instruction_import"));
         assert!(refs.iter().any(|hit| hit.confidence > 0.9));
+        assert!(refs.iter().any(|hit| hit.promotes_effective));
+    }
+
+    #[test]
+    fn extracts_instruction_directives_with_bare_filenames() {
+        let temp = TempDir::new().expect("tempdir");
+        let base = temp.path().join("AGENTS.md");
+        let target = temp.path().join("CLAUDE.md");
+        fs::write(&target, "ok").expect("target");
+
+        let refs = extract_references(
+            &ResolverContext {
+                base_file: &base,
+                base_display_path: "AGENTS.md",
+                artifact_type: &ArtifactType::Instructions,
+                tool_family: "codex",
+                home_dir: Path::new("/Users/test"),
+            },
+            "Read CLAUDE.md\n",
+        );
+
+        assert!(refs.iter().any(|hit| hit.source == "instruction_directive"));
+        assert!(refs
+            .iter()
+            .any(|hit| hit.source_kind == ReferenceSourceKind::InstructionImport));
+        assert!(refs
+            .iter()
+            .any(|hit| hit.resolved_path.ends_with("CLAUDE.md") && hit.promotes_effective));
+    }
+
+    #[test]
+    fn extracts_multiple_instruction_directives_from_sentence() {
+        let temp = TempDir::new().expect("tempdir");
+        let base = temp.path().join("CLAUDE.md");
+        fs::write(temp.path().join("ANALYSIS.md"), "ok").expect("analysis");
+        fs::write(temp.path().join("TODOS.md"), "ok").expect("todos");
+
+        let refs = extract_references(
+            &ResolverContext {
+                base_file: &base,
+                base_display_path: "CLAUDE.md",
+                artifact_type: &ArtifactType::Instructions,
+                tool_family: "claude",
+                home_dir: Path::new("/Users/test"),
+            },
+            "If prioritization is involved, read `ANALYSIS.md` and `TODOS.md` directly before planning.\n",
+        );
+
+        assert!(refs
+            .iter()
+            .any(|hit| hit.resolved_path.ends_with("ANALYSIS.md")));
+        assert!(refs
+            .iter()
+            .any(|hit| hit.resolved_path.ends_with("TODOS.md")));
     }
 
     #[test]
@@ -454,6 +576,7 @@ mod tests {
         assert!(refs
             .iter()
             .any(|hit| hit.resolved_path.ends_with("rules/policy.md")));
+        assert!(refs.iter().any(|hit| hit.promotes_effective));
     }
 
     #[test]
@@ -470,5 +593,6 @@ mod tests {
             r#"See "./other.md""#,
         );
         assert!(refs.iter().any(|hit| hit.source == "quoted_reference"));
+        assert!(refs.iter().any(|hit| !hit.promotes_effective));
     }
 }
