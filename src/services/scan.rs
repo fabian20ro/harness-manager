@@ -16,8 +16,9 @@ use crate::{
     config::AppConfig,
     domain::{
         ArtifactNode, ArtifactRule, ArtifactType, EdgeType, GraphEdge, GraphNode, NodeState,
-        PluginArtifactNode, PluginNode, ProjectNode, ProjectSummary, RemoteSnapshotNode, ScopeType,
-        SnapshotAssociation, SurfaceState, ToolCatalog, ToolContext, ToolContextNode, Verdict,
+        PluginArtifactNode, PluginNode, ProjectKind, ProjectNode, ProjectSummary, RemoteSnapshotNode,
+        ScopeType, SnapshotAssociation, SurfaceState, ToolCatalog, ToolContext, ToolContextNode,
+        Verdict,
     },
     services::refs::{extract_references, ResolverContext},
     storage::Store,
@@ -47,6 +48,23 @@ struct PluginCandidate {
     readme_path: Option<PathBuf>,
     discovery_sources: Vec<String>,
     disabled: bool,
+}
+
+#[derive(Clone, Debug)]
+struct ProjectCandidate {
+    root_path: PathBuf,
+    name: String,
+    kind: ProjectKind,
+    discovery_reason: String,
+    signal_score: i32,
+}
+
+#[derive(Clone, Debug)]
+struct CandidateSignal {
+    root_path: PathBuf,
+    kind: ProjectKind,
+    score: i32,
+    reason: String,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -133,31 +151,32 @@ where
         .into_iter()
         .map(PathBuf::from)
         .collect::<Vec<_>>();
-    let repo_roots = discover_repos_with_progress(
+    let project_candidates = discover_project_candidates_with_progress(
         &roots,
+        &config.known_global_dirs,
         config.scan_max_depth,
         &config.home_dir,
         &mut on_progress,
     )?;
 
     let mut summaries = Vec::new();
-    let total_repos = repo_roots.len();
-    for (index, repo_root) in repo_roots.iter().enumerate() {
-        let repo_display_path = display_path(repo_root, &config.home_dir);
+    let total_projects = project_candidates.len();
+    for (index, candidate) in project_candidates.iter().enumerate() {
+        let project_display_path = display_path(&candidate.root_path, &config.home_dir);
         on_progress(ScanProgress {
             phase: "repo".to_string(),
-            message: format!("Indexing repo {repo_display_path}"),
-            current_path: Some(repo_display_path.clone()),
+            message: format!("Indexing {} {project_display_path}", project_kind_label(&candidate.kind)),
+            current_path: Some(project_display_path.clone()),
             items_done: Some(index),
-            items_total: Some(total_repos),
+            items_total: Some(total_projects),
         })?;
         let summary = scan_project(
             config,
             store,
             &catalogs,
-            repo_root,
+            candidate,
             index + 1,
-            total_repos,
+            total_projects,
             &mut on_progress,
         )?;
         summaries.push(summary);
@@ -267,31 +286,30 @@ fn scan_project(
     config: &AppConfig,
     store: &Store,
     catalogs: &HashMap<String, ToolCatalog>,
-    repo_root: &Path,
+    candidate: &ProjectCandidate,
     repo_index: usize,
     total_repos: usize,
     on_progress: &mut dyn FnMut(ScanProgress) -> Result<()>,
 ) -> Result<ProjectSummary> {
     let indexed_at = Utc::now();
-    let project_id = stable_id("project", &repo_root.to_string_lossy());
+    let project_id = stable_id("project", &candidate.root_path.to_string_lossy());
     let summary = ProjectSummary {
         id: project_id.clone(),
-        root_path: repo_root.to_string_lossy().to_string(),
-        display_path: display_path(repo_root, &config.home_dir),
-        name: repo_root
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("repo")
-            .to_string(),
+        root_path: candidate.root_path.to_string_lossy().to_string(),
+        display_path: display_path(&candidate.root_path, &config.home_dir),
+        name: candidate.name.clone(),
+        kind: candidate.kind.clone(),
+        discovery_reason: candidate.discovery_reason.clone(),
+        signal_score: candidate.signal_score,
         indexed_at,
         status: "ready".to_string(),
     };
 
     let project_dir = store.project_dir(&project_id);
     fs::create_dir_all(project_dir.join("tool-state"))?;
-    let repo_display_path = display_path(repo_root, &config.home_dir);
+    let repo_display_path = display_path(&candidate.root_path, &config.home_dir);
     let inventory = collect_repo_files_with_progress(
-        repo_root,
+        &candidate.root_path,
         config.scan_max_depth,
         &config.home_dir,
         &mut |current_dir| {
@@ -1696,19 +1714,35 @@ fn collect_repo_files_with_progress(
 }
 
 #[allow(dead_code)]
-fn discover_repos(roots: &[PathBuf], max_depth: usize) -> Vec<PathBuf> {
-    discover_repos_with_progress(roots, max_depth, Path::new(""), &mut |_| Ok(()))
-        .unwrap_or_default()
+fn discover_project_candidates(
+    roots: &[PathBuf],
+    known_global_dirs: &[PathBuf],
+    max_depth: usize,
+) -> Vec<ProjectCandidate> {
+    discover_project_candidates_with_progress(
+        roots,
+        known_global_dirs,
+        max_depth,
+        Path::new(""),
+        &mut |_| Ok(()),
+    )
+    .unwrap_or_default()
 }
 
-fn discover_repos_with_progress(
+fn discover_project_candidates_with_progress(
     roots: &[PathBuf],
+    known_global_dirs: &[PathBuf],
     max_depth: usize,
     home_dir: &Path,
     on_progress: &mut dyn FnMut(ScanProgress) -> Result<()>,
-) -> Result<Vec<PathBuf>> {
-    let mut repos = HashSet::new();
-    for root in roots {
+) -> Result<Vec<ProjectCandidate>> {
+    let mut search_roots = roots.iter().cloned().collect::<Vec<_>>();
+    search_roots.extend(known_global_dirs.iter().cloned());
+    search_roots.sort();
+    search_roots.dedup();
+
+    let mut signals = Vec::new();
+    for root in &search_roots {
         if !root.exists() {
             continue;
         }
@@ -1724,15 +1758,21 @@ fn discover_repos_with_progress(
             items_done: None,
             items_total: None,
         })?;
+
         if root.join(".git").exists() {
-            repos.insert(root.clone());
-            continue;
+            signals.push(CandidateSignal {
+                root_path: root.clone(),
+                kind: ProjectKind::GitRepo,
+                score: 300,
+                reason: "Directory contains .git.".to_string(),
+            });
         }
+
         for entry in WalkDir::new(root)
             .max_depth(max_depth)
             .into_iter()
+            .filter_entry(|entry| should_traverse_candidate_entry(entry))
             .filter_map(Result::ok)
-            .filter(|entry| entry.file_type().is_dir())
         {
             let current_path = if home_dir == Path::new("") {
                 entry.path().to_string_lossy().to_string()
@@ -1746,14 +1786,281 @@ fn discover_repos_with_progress(
                 items_done: None,
                 items_total: None,
             })?;
-            if entry.path().join(".git").exists() {
-                repos.insert(entry.path().to_path_buf());
+
+            let path = entry.path();
+            if entry.file_type().is_dir() && path.join(".git").exists() {
+                signals.push(CandidateSignal {
+                    root_path: path.to_path_buf(),
+                    kind: ProjectKind::GitRepo,
+                    score: 300,
+                    reason: "Directory contains .git.".to_string(),
+                });
+            }
+
+            let relative = path.strip_prefix(root).unwrap_or(path);
+            if let Some(signal) = workspace_signal_for_entry(path, relative, root) {
+                signals.push(signal);
+            }
+            if let Some(signal) = plugin_signal_for_entry(path, relative, root) {
+                signals.push(signal);
             }
         }
     }
-    let mut repos = repos.into_iter().collect::<Vec<_>>();
-    repos.sort();
-    Ok(repos)
+
+    Ok(finalize_project_candidates(signals))
+}
+
+fn should_traverse_candidate_entry(entry: &walkdir::DirEntry) -> bool {
+    let name = entry.file_name().to_string_lossy();
+    !matches!(name.as_ref(), ".git" | "node_modules" | "target" | "dist")
+}
+
+fn workspace_signal_for_entry(path: &Path, _relative: &Path, scan_root: &Path) -> Option<CandidateSignal> {
+    if path.is_file() {
+        let file_name = path.file_name()?.to_str()?;
+        if file_name == "AGENTS.md" {
+            return Some(CandidateSignal {
+                root_path: path.parent()?.to_path_buf(),
+                kind: ProjectKind::WorkspaceCandidate,
+                score: 220,
+                reason: "Workspace contains AGENTS.md.".to_string(),
+            });
+        }
+        if file_name == "CLAUDE.md" {
+            return Some(CandidateSignal {
+                root_path: path.parent()?.to_path_buf(),
+                kind: ProjectKind::WorkspaceCandidate,
+                score: 215,
+                reason: "Workspace contains CLAUDE.md.".to_string(),
+            });
+        }
+        if file_name == "config.toml"
+            && path
+                .parent()
+                .and_then(|parent| parent.file_name())
+                .and_then(|name| name.to_str())
+                == Some(".codex")
+        {
+            if path.parent()? == scan_root {
+                return None;
+            }
+            return Some(CandidateSignal {
+                root_path: path.parent()?.parent()?.to_path_buf(),
+                kind: ProjectKind::WorkspaceCandidate,
+                score: 210,
+                reason: "Workspace contains .codex/config.toml.".to_string(),
+            });
+        }
+        if file_name == "config.json"
+            && path
+                .parent()
+                .and_then(|parent| parent.file_name())
+                .and_then(|name| name.to_str())
+                == Some(".claude")
+        {
+            if path.parent()? == scan_root {
+                return None;
+            }
+            return Some(CandidateSignal {
+                root_path: path.parent()?.parent()?.to_path_buf(),
+                kind: ProjectKind::WorkspaceCandidate,
+                score: 205,
+                reason: "Workspace contains .claude/config.json.".to_string(),
+            });
+        }
+        if file_name == "copilot-instructions.md"
+            && path
+                .parent()
+                .and_then(|parent| parent.file_name())
+                .and_then(|name| name.to_str())
+                == Some(".github")
+        {
+            if path.parent()? == scan_root {
+                return None;
+            }
+            return Some(CandidateSignal {
+                root_path: path.parent()?.parent()?.to_path_buf(),
+                kind: ProjectKind::WorkspaceCandidate,
+                score: 200,
+                reason: "Workspace contains .github/copilot-instructions.md.".to_string(),
+            });
+        }
+        if path.extension().and_then(|ext| ext.to_str()) == Some("md")
+            && path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.ends_with(".agent.md"))
+            && path
+                .parent()
+                .and_then(|parent| parent.file_name())
+                .and_then(|name| name.to_str())
+                == Some("agents")
+            && path
+                .parent()
+                .and_then(|parent| parent.parent())
+                .and_then(|parent| parent.file_name())
+                .and_then(|name| name.to_str())
+                == Some(".github")
+        {
+            if path.parent()?.parent()? == scan_root {
+                return None;
+            }
+            return Some(CandidateSignal {
+                root_path: path.parent()?.parent()?.parent()?.to_path_buf(),
+                kind: ProjectKind::WorkspaceCandidate,
+                score: 195,
+                reason: "Workspace contains .github/agents/*.agent.md.".to_string(),
+            });
+        }
+    }
+    None
+}
+
+fn plugin_signal_for_entry(path: &Path, _relative: &Path, scan_root: &Path) -> Option<CandidateSignal> {
+    if !path.is_file() {
+        return None;
+    }
+
+    if path.file_name().and_then(|name| name.to_str()) == Some("plugin.json")
+        && matches!(
+            path.parent()
+                .and_then(|parent| parent.file_name())
+                .and_then(|name| name.to_str()),
+            Some(".codex-plugin" | ".claude-plugin")
+        )
+    {
+        return Some(CandidateSignal {
+            root_path: path.parent()?.parent()?.to_path_buf(),
+            kind: ProjectKind::PluginPackage,
+            score: 130,
+            reason: format!(
+                "Plugin package contains {}.",
+                path.parent()?.file_name()?.to_string_lossy()
+            ),
+        });
+    }
+
+    if path.file_name().and_then(|name| name.to_str()) == Some(".mcp.json") {
+        return Some(CandidateSignal {
+            root_path: path.parent()?.to_path_buf(),
+            kind: ProjectKind::PluginPackage,
+            score: 120,
+            reason: "Plugin package contains .mcp.json.".to_string(),
+        });
+    }
+
+    if path.file_name().and_then(|name| name.to_str()) == Some("SKILL.md") {
+        return Some(CandidateSignal {
+            root_path: nearest_plugin_root(path.parent()?, scan_root),
+            kind: ProjectKind::PluginPackage,
+            score: 110,
+            reason: "Plugin package contains SKILL.md.".to_string(),
+        });
+    }
+
+    None
+}
+
+fn nearest_plugin_root(start: &Path, scan_root: &Path) -> PathBuf {
+    let mut current = Some(start);
+    while let Some(path) = current {
+        if path.join(".codex-plugin").join("plugin.json").exists()
+            || path.join(".claude-plugin").join("plugin.json").exists()
+            || path.join(".mcp.json").exists()
+        {
+            return path.to_path_buf();
+        }
+        if path.file_name().and_then(|name| name.to_str()) == Some("skills") {
+            return path.parent().unwrap_or(path).to_path_buf();
+        }
+        if path == scan_root {
+            break;
+        }
+        current = path.parent();
+    }
+    start.to_path_buf()
+}
+
+fn finalize_project_candidates(signals: Vec<CandidateSignal>) -> Vec<ProjectCandidate> {
+    let mut merged = HashMap::<(PathBuf, ProjectKind), ProjectCandidate>::new();
+    for signal in signals {
+        let key = (signal.root_path.clone(), signal.kind.clone());
+        let name = signal
+            .root_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("project")
+            .to_string();
+        merged
+            .entry(key)
+            .and_modify(|candidate| {
+                let prior_score = candidate.signal_score;
+                candidate.signal_score = candidate.signal_score.max(signal.score);
+                if candidate.discovery_reason.is_empty() || signal.score > prior_score {
+                    candidate.discovery_reason = signal.reason.clone();
+                }
+            })
+            .or_insert(ProjectCandidate {
+                root_path: signal.root_path,
+                name,
+                kind: signal.kind,
+                discovery_reason: signal.reason,
+                signal_score: signal.score,
+            });
+    }
+
+    let mut candidates = merged.into_values().collect::<Vec<_>>();
+    candidates.sort_by(|left, right| {
+        project_kind_rank(&left.kind)
+            .cmp(&project_kind_rank(&right.kind))
+            .then(right.signal_score.cmp(&left.signal_score))
+            .then(left.root_path.cmp(&right.root_path))
+    });
+
+    let mut kept = Vec::<ProjectCandidate>::new();
+    'candidate: for candidate in candidates {
+        for existing in &kept {
+            if candidate.root_path == existing.root_path {
+                if project_kind_rank(&candidate.kind) >= project_kind_rank(&existing.kind) {
+                    continue 'candidate;
+                }
+            }
+            if candidate.root_path.starts_with(&existing.root_path) {
+                if matches!(existing.kind, ProjectKind::GitRepo) {
+                    continue 'candidate;
+                }
+                if candidate.kind == existing.kind {
+                    continue 'candidate;
+                }
+            }
+        }
+        kept.push(candidate);
+    }
+
+    kept.sort_by(|left, right| {
+        project_kind_rank(&left.kind)
+            .cmp(&project_kind_rank(&right.kind))
+            .then(right.signal_score.cmp(&left.signal_score))
+            .then(left.name.cmp(&right.name))
+            .then(left.root_path.cmp(&right.root_path))
+    });
+    kept
+}
+
+fn project_kind_rank(kind: &ProjectKind) -> i32 {
+    match kind {
+        ProjectKind::GitRepo => 0,
+        ProjectKind::WorkspaceCandidate => 1,
+        ProjectKind::PluginPackage => 2,
+    }
+}
+
+fn project_kind_label(kind: &ProjectKind) -> &'static str {
+    match kind {
+        ProjectKind::GitRepo => "repo",
+        ProjectKind::WorkspaceCandidate => "workspace",
+        ProjectKind::PluginPackage => "plugin package",
+    }
 }
 
 fn stable_id(prefix: &str, input: &str) -> String {
@@ -1933,7 +2240,7 @@ mod tests {
     use crate::{
         catalogs::seed_catalog_map,
         config::AppConfig,
-        domain::{GraphNode, NodeState},
+        domain::{GraphNode, NodeState, ProjectKind, ProjectSummary},
         storage::Store,
     };
 
@@ -1941,6 +2248,20 @@ mod tests {
         build_surface_state, collect_repo_files, display_path, reindex_project_tool_with_progress,
         scan_projects, scan_projects_with_progress, stable_id, EdgeType,
     };
+
+    fn demo_project_summary(root: &std::path::Path, home: &std::path::Path) -> ProjectSummary {
+        ProjectSummary {
+            id: "demo".to_string(),
+            root_path: root.to_string_lossy().to_string(),
+            display_path: display_path(root, home),
+            name: "demo".to_string(),
+            kind: ProjectKind::GitRepo,
+            discovery_reason: String::new(),
+            signal_score: 300,
+            indexed_at: Utc::now(),
+            status: "ready".to_string(),
+        }
+    }
 
     #[test]
     fn scan_finds_repo_and_codex_artifacts() {
@@ -1964,6 +2285,7 @@ mod tests {
         let store = Store::new(config.store_root.clone());
         let projects = scan_projects(&config, &store, None).expect("scan");
         assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].kind, ProjectKind::GitRepo);
         let state = store
             .read_json::<crate::domain::SurfaceState>(
                 &store.tool_state_path(&projects[0].id, "codex"),
@@ -2015,6 +2337,126 @@ mod tests {
         assert!(progress
             .iter()
             .any(|update| update.current_path.as_deref() == Some("~/git/demo/docs")));
+    }
+
+    #[test]
+    fn scan_discovers_workspace_candidates_from_known_global_dirs() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let workspace = home.join("scratch").join("notes-harness");
+        fs::create_dir_all(&workspace).expect("workspace dir");
+        fs::write(workspace.join("AGENTS.md"), "Read policy.md\n").expect("agents");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join("scratch")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+
+        let projects = scan_projects(&config, &store, None).expect("scan");
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].kind, ProjectKind::WorkspaceCandidate);
+        assert_eq!(projects[0].root_path, workspace.to_string_lossy());
+        assert!(projects[0].discovery_reason.contains("AGENTS.md"));
+    }
+
+    #[test]
+    fn scan_ignores_weak_only_non_git_directories() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let weak = home.join("scratch").join("weak-only");
+        fs::create_dir_all(weak.join("agents")).expect("agents dir");
+        fs::write(weak.join("hooks.json"), "{}").expect("hooks");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join("scratch")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+
+        let projects = scan_projects(&config, &store, None).expect("scan");
+        assert!(projects.is_empty());
+    }
+
+    #[test]
+    fn scan_discovers_plugin_packages_from_plugin_signals() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let plugin_root = home
+            .join(".codex")
+            .join(".tmp")
+            .join("plugins")
+            .join("plugins")
+            .join("vercel");
+        fs::create_dir_all(plugin_root.join("skills").join("nextjs")).expect("skills dir");
+        fs::write(
+            plugin_root.join("skills").join("nextjs").join("SKILL.md"),
+            "---\nname: Next.js\ndescription: test\n---\n",
+        )
+        .expect("skill");
+        fs::write(plugin_root.join(".mcp.json"), "{}").expect("mcp");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".codex")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+
+        let projects = scan_projects(&config, &store, None).expect("scan");
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].kind, ProjectKind::PluginPackage);
+        assert_eq!(projects[0].root_path, plugin_root.to_string_lossy());
+        assert!(projects[0].discovery_reason.contains(".mcp.json"));
+    }
+
+    #[test]
+    fn git_roots_outrank_nested_plugin_packages() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let repo = home.join("git").join("demo");
+        let nested_plugin = repo.join("plugins").join("bundle");
+        fs::create_dir_all(repo.join(".git")).expect("git dir");
+        fs::create_dir_all(nested_plugin.join("skills").join("nextjs")).expect("skills dir");
+        fs::write(
+            nested_plugin.join("skills").join("nextjs").join("SKILL.md"),
+            "---\nname: Next.js\ndescription: test\n---\n",
+        )
+        .expect("skill");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".codex")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+
+        let projects = scan_projects(&config, &store, None).expect("scan");
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].kind, ProjectKind::GitRepo);
+        assert_eq!(projects[0].root_path, repo.to_string_lossy());
     }
 
     #[test]
@@ -2135,14 +2577,7 @@ mod tests {
         let state = build_surface_state(
             &config,
             &store,
-            &crate::domain::ProjectSummary {
-                id: "demo".to_string(),
-                root_path: repo.to_string_lossy().to_string(),
-                display_path: display_path(&repo, &home),
-                name: "demo".to_string(),
-                indexed_at: Utc::now(),
-                status: "ready".to_string(),
-            },
+            &demo_project_summary(&repo, &home),
             &seed_catalog_map().expect("catalogs")["codex"],
             &inventory,
         )
@@ -2188,14 +2623,7 @@ mod tests {
         let state = build_surface_state(
             &config,
             &store,
-            &crate::domain::ProjectSummary {
-                id: "demo".to_string(),
-                root_path: repo.to_string_lossy().to_string(),
-                display_path: display_path(&repo, &home),
-                name: "demo".to_string(),
-                indexed_at: Utc::now(),
-                status: "ready".to_string(),
-            },
+            &demo_project_summary(&repo, &home),
             &seed_catalog_map().expect("catalogs")["codex"],
             &inventory,
         )
@@ -2232,14 +2660,7 @@ mod tests {
         let state = build_surface_state(
             &config,
             &store,
-            &crate::domain::ProjectSummary {
-                id: "demo".to_string(),
-                root_path: repo.to_string_lossy().to_string(),
-                display_path: display_path(&repo, &home),
-                name: "demo".to_string(),
-                indexed_at: Utc::now(),
-                status: "ready".to_string(),
-            },
+            &demo_project_summary(&repo, &home),
             &seed_catalog_map().expect("catalogs")["codex"],
             &inventory,
         )
@@ -2300,14 +2721,7 @@ mod tests {
         let state = build_surface_state(
             &config,
             &store,
-            &crate::domain::ProjectSummary {
-                id: "demo".to_string(),
-                root_path: repo.to_string_lossy().to_string(),
-                display_path: display_path(&repo, &home),
-                name: "demo".to_string(),
-                indexed_at: Utc::now(),
-                status: "ready".to_string(),
-            },
+            &demo_project_summary(&repo, &home),
             &seed_catalog_map().expect("catalogs")["codex"],
             &inventory,
         )
@@ -2360,14 +2774,7 @@ mod tests {
         let state = build_surface_state(
             &config,
             &store,
-            &crate::domain::ProjectSummary {
-                id: "demo".to_string(),
-                root_path: repo.to_string_lossy().to_string(),
-                display_path: display_path(&repo, &home),
-                name: "demo".to_string(),
-                indexed_at: Utc::now(),
-                status: "ready".to_string(),
-            },
+            &demo_project_summary(&repo, &home),
             &seed_catalog_map().expect("catalogs")["codex"],
             &inventory,
         )
@@ -2417,14 +2824,7 @@ mod tests {
         let state = build_surface_state(
             &config,
             &store,
-            &crate::domain::ProjectSummary {
-                id: "demo".to_string(),
-                root_path: repo.to_string_lossy().to_string(),
-                display_path: display_path(&repo, &home),
-                name: "demo".to_string(),
-                indexed_at: Utc::now(),
-                status: "ready".to_string(),
-            },
+            &demo_project_summary(&repo, &home),
             &seed_catalog_map().expect("catalogs")["codex"],
             &inventory,
         )
@@ -2491,14 +2891,7 @@ mod tests {
         let state = build_surface_state(
             &config,
             &store,
-            &crate::domain::ProjectSummary {
-                id: "demo".to_string(),
-                root_path: repo.to_string_lossy().to_string(),
-                display_path: display_path(&repo, &home),
-                name: "demo".to_string(),
-                indexed_at: Utc::now(),
-                status: "ready".to_string(),
-            },
+            &demo_project_summary(&repo, &home),
             &seed_catalog_map().expect("catalogs")["codex"],
             &inventory,
         )
@@ -2556,14 +2949,7 @@ mod tests {
         let state = build_surface_state(
             &config,
             &store,
-            &crate::domain::ProjectSummary {
-                id: "demo".to_string(),
-                root_path: repo.to_string_lossy().to_string(),
-                display_path: display_path(&repo, &home),
-                name: "demo".to_string(),
-                indexed_at: Utc::now(),
-                status: "ready".to_string(),
-            },
+            &demo_project_summary(&repo, &home),
             &seed_catalog_map().expect("catalogs")["codex"],
             &inventory,
         )
@@ -2640,14 +3026,7 @@ mod tests {
         let state = build_surface_state(
             &config,
             &store,
-            &crate::domain::ProjectSummary {
-                id: "demo".to_string(),
-                root_path: repo.to_string_lossy().to_string(),
-                display_path: display_path(&repo, &home),
-                name: "demo".to_string(),
-                indexed_at: Utc::now(),
-                status: "ready".to_string(),
-            },
+            &demo_project_summary(&repo, &home),
             &seed_catalog_map().expect("catalogs")["codex"],
             &inventory,
         )
@@ -2760,14 +3139,7 @@ mod tests {
         let state = build_surface_state(
             &config,
             &store,
-            &crate::domain::ProjectSummary {
-                id: "demo".to_string(),
-                root_path: repo.to_string_lossy().to_string(),
-                display_path: display_path(&repo, &home),
-                name: "demo".to_string(),
-                indexed_at: Utc::now(),
-                status: "ready".to_string(),
-            },
+            &demo_project_summary(&repo, &home),
             &seed_catalog_map().expect("catalogs")["codex"],
             &inventory,
         )
@@ -2839,14 +3211,7 @@ mod tests {
         let state = build_surface_state(
             &config,
             &store,
-            &crate::domain::ProjectSummary {
-                id: "demo".to_string(),
-                root_path: repo.to_string_lossy().to_string(),
-                display_path: display_path(&repo, &home),
-                name: "demo".to_string(),
-                indexed_at: Utc::now(),
-                status: "ready".to_string(),
-            },
+            &demo_project_summary(&repo, &home),
             &seed_catalog_map().expect("catalogs")["codex"],
             &inventory,
         )
@@ -2909,14 +3274,7 @@ mod tests {
         let state = build_surface_state(
             &config,
             &store,
-            &crate::domain::ProjectSummary {
-                id: "demo".to_string(),
-                root_path: repo.to_string_lossy().to_string(),
-                display_path: display_path(&repo, &home),
-                name: "demo".to_string(),
-                indexed_at: Utc::now(),
-                status: "ready".to_string(),
-            },
+            &demo_project_summary(&repo, &home),
             &seed_catalog_map().expect("catalogs")["claude_code"],
             &inventory,
         )
@@ -2974,14 +3332,7 @@ mod tests {
         let state = build_surface_state(
             &config,
             &store,
-            &crate::domain::ProjectSummary {
-                id: "demo".to_string(),
-                root_path: repo.to_string_lossy().to_string(),
-                display_path: display_path(&repo, &home),
-                name: "demo".to_string(),
-                indexed_at: Utc::now(),
-                status: "ready".to_string(),
-            },
+            &demo_project_summary(&repo, &home),
             &seed_catalog_map().expect("catalogs")["claude_code"],
             &inventory,
         )

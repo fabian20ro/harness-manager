@@ -192,7 +192,7 @@ mod tests {
     use crate::{
         catalogs::seed_catalog_map,
         config::AppConfig,
-        domain::ProjectSummary,
+        domain::{ProjectKind, ProjectSummary},
         services::scan::{build_surface_state_for_test, collect_repo_files_for_test, display_path_for_test},
         storage::Store,
     };
@@ -225,6 +225,9 @@ mod tests {
             root_path: repo.to_string_lossy().to_string(),
             display_path: display_path_for_test(&repo, &home),
             name: "demo".to_string(),
+            kind: ProjectKind::GitRepo,
+            discovery_reason: String::new(),
+            signal_score: 300,
             indexed_at: Utc::now(),
             status: "ready".to_string(),
         };
@@ -286,6 +289,9 @@ mod tests {
             root_path: repo.to_string_lossy().to_string(),
             display_path: display_path_for_test(&repo, &home),
             name: "demo".to_string(),
+            kind: ProjectKind::GitRepo,
+            discovery_reason: String::new(),
+            signal_score: 300,
             indexed_at: Utc::now(),
             status: "ready".to_string(),
         };

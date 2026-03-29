@@ -528,7 +528,7 @@ mod tests {
 
     use crate::{
         config::AppConfig,
-        domain::{ProjectSummary, SurfaceState, ToolContext, ToolContextNode},
+        domain::{ProjectKind, ProjectSummary, SurfaceState, ToolContext, ToolContextNode},
         storage::Store,
     };
 
@@ -556,6 +556,9 @@ mod tests {
             root_path: "/tmp/demo".to_string(),
             display_path: "~/git/demo".to_string(),
             name: "demo".to_string(),
+            kind: ProjectKind::GitRepo,
+            discovery_reason: String::new(),
+            signal_score: 300,
             indexed_at: Utc::now(),
             status: "ready".to_string(),
         };

@@ -7,6 +7,16 @@
 
 ---
 
+### [2026-03-29] Hybrid project discovery with plugin package tier
+
+**Context:** project discovery only accepted `.git` roots, so real non-git harness workspaces and installed plugin packages never appeared in Projects; broadening discovery risked flooding the list with weak-signal directories
+**Happened:** replaced repo-only root detection with scored candidate discovery across configured roots and known global dirs; added three project kinds (`git_repo`, `workspace_candidate`, `plugin_package`) plus discovery reason/score on `ProjectSummary`; promoted non-git workspaces only from strong signals (`AGENTS.md`, `CLAUDE.md`, `.codex/config.toml`, `.claude/config.json`, Copilot repo files); promoted plugin packages from plugin manifests, `.mcp.json`, or `SKILL.md`; kept weak signals from creating workspace candidates on their own; made git roots outrank nested plugin/workspace candidates; updated Projects UI and toolbar labels to show tiers; added backend/UI regressions; verified `cargo test`, `npm test -- --run`, `npm run build`
+**Outcome:** success
+**Insight:** candidate-root discovery needs stricter evidence than artifact discovery; if every interesting file can mint a project, the Projects list loses trust immediately, so discovery must model signal strength and project kind explicitly
+**Promoted:** no
+
+---
+
 ### [2026-03-29] Codex plugin skills as first-class artifacts
 
 **Context:** Codex plugin `skills` paths resolved on disk, but the graph still treated them as generic reference targets; imported plugin docs also assumed stale frontmatter-based Codex discovery instead of the current `SKILL.md` + `agents/openai.yaml` contract

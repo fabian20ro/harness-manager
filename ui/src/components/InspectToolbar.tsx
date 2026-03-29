@@ -1,5 +1,6 @@
 import { HelperCommand } from "./HelperCommand";
 import { LABELS, TOOL_IDS } from "../lib/inspect";
+import { projectSelectLabel } from "../lib/projects";
 import type { JobStatus, ProjectSummary } from "../lib/types";
 
 type InspectToolbarProps = {
@@ -47,7 +48,7 @@ export function InspectToolbar({
             <option value="">Select project</option>
             {projects.map((project) => (
               <option key={project.id} value={project.id}>
-                {project.name}
+                {projectSelectLabel(project)}
               </option>
             ))}
           </select>

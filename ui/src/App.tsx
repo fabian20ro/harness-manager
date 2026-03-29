@@ -5,6 +5,7 @@ import { ScanStatusBar } from "./components/ScanStatusBar";
 import { SidebarNav } from "./components/SidebarNav";
 import { ViewerPane } from "./components/ViewerPane";
 import { formatDisplayPath, getNodeLabel, LABELS } from "./lib/inspect";
+import { projectKindLabel } from "./lib/projects";
 import { useInspectController } from "./hooks/useInspectController";
 
 export function App() {
@@ -63,7 +64,9 @@ export function App() {
                   onClick={() => controller.setSelectedProject(project.id)}
                 >
                   <strong>{project.name}</strong>
+                  <span>{projectKindLabel(project)}</span>
                   <span>{formatDisplayPath(project.display_path)}</span>
+                  {project.discovery_reason ? <span>{project.discovery_reason}</span> : null}
                   <em>{new Date(project.indexed_at).toLocaleString()}</em>
                 </button>
               ))}

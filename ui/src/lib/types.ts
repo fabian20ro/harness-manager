@@ -3,6 +3,9 @@ export type ProjectSummary = {
   root_path: string;
   display_path: string;
   name: string;
+  kind?: "git_repo" | "workspace_candidate" | "plugin_package";
+  discovery_reason?: string;
+  signal_score?: number;
   indexed_at: string;
   status: string;
 };

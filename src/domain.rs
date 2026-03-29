@@ -34,6 +34,18 @@ pub enum ScopeType {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
+pub enum ProjectKind {
+    GitRepo,
+    WorkspaceCandidate,
+    PluginPackage,
+}
+
+fn default_project_kind() -> ProjectKind {
+    ProjectKind::GitRepo
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
 pub enum EdgeType {
     DiscoveredIn,
     Loads,
@@ -77,6 +89,12 @@ pub struct ProjectSummary {
     pub root_path: String,
     pub display_path: String,
     pub name: String,
+    #[serde(default = "default_project_kind")]
+    pub kind: ProjectKind,
+    #[serde(default)]
+    pub discovery_reason: String,
+    #[serde(default)]
+    pub signal_score: i32,
     pub indexed_at: DateTime<Utc>,
     pub status: String,
 }
