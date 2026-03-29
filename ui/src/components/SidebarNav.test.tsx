@@ -9,6 +9,7 @@ describe("SidebarNav", () => {
       <SidebarNav
         activeTab="Projects"
         collapsed={false}
+        globalReindexLabel="Reindex all"
         onSelectTab={() => {}}
         onToggleCollapse={() => {}}
         onReindex={() => {}}
@@ -19,6 +20,7 @@ describe("SidebarNav", () => {
     expect(screen.getByText("📁")).toBeInTheDocument();
     expect(screen.queryByText("cargo run")).not.toBeInTheDocument();
     expect(screen.getByText("Harness Inspector")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Reindex all/ })).toBeInTheDocument();
   });
 
   it("calls collapse toggle", () => {
@@ -27,6 +29,7 @@ describe("SidebarNav", () => {
       <SidebarNav
         activeTab="Projects"
         collapsed={false}
+        globalReindexLabel="Reindex all"
         onSelectTab={() => {}}
         onToggleCollapse={onToggleCollapse}
         onReindex={() => {}}
@@ -42,13 +45,14 @@ describe("SidebarNav", () => {
       <SidebarNav
         activeTab="Projects"
         collapsed
+        globalReindexLabel="Reindex all"
         onSelectTab={() => {}}
         onToggleCollapse={() => {}}
         onReindex={() => {}}
       />,
     );
 
-    expect(screen.getByText("H")).toBeInTheDocument();
+    expect(screen.getByText("HI")).toBeInTheDocument();
     expect(screen.queryByText("Harness Inspector")).not.toBeInTheDocument();
   });
 });

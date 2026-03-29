@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import { InspectTree } from "./InspectTree";
 
@@ -7,11 +7,14 @@ describe("InspectTree", () => {
   it("renders usage indicators for tree nodes", () => {
     render(
       <InspectTree
+        expandedKeys={[]}
+        forcedExpandedKeys={[]}
         selectedNodeId="node-1"
         onSelect={() => {}}
+        onToggleExpand={() => {}}
         tree={[
           {
-            key: "node-1",
+            key: "leaf:node-1",
             label: "AGENTS.md",
             nodeId: "node-1",
             path: "~/git/demo/AGENTS.md",
@@ -19,9 +22,10 @@ describe("InspectTree", () => {
             states: ["effective"],
             usageState: "used",
             score: 0,
+            isDirectory: false,
           },
           {
-            key: "node-2",
+            key: "leaf:node-2",
             label: "missing.md",
             nodeId: "node-2",
             path: "~/git/demo/missing.md",
@@ -29,6 +33,7 @@ describe("InspectTree", () => {
             states: ["broken_reference"],
             usageState: "broken",
             score: 3,
+            isDirectory: false,
           },
         ]}
       />,
@@ -36,5 +41,71 @@ describe("InspectTree", () => {
 
     expect(screen.getByRole("button", { name: /AGENTS.md/ })).toHaveClass("usage-used");
     expect(screen.getByRole("button", { name: /missing.md/ })).toHaveClass("usage-broken");
+  });
+
+  it("toggles directory branches and preserves leaf selection", () => {
+    const onToggleExpand = vi.fn();
+    const onSelect = vi.fn();
+
+    render(
+      <InspectTree
+        expandedKeys={["~", "~/git", "~/git/demo"]}
+        forcedExpandedKeys={["~"]}
+        selectedNodeId=""
+        onSelect={onSelect}
+        onToggleExpand={onToggleExpand}
+        tree={[
+          {
+            key: "~",
+            label: "~",
+            path: "~",
+            children: [
+              {
+                key: "~/git",
+                label: "git",
+                path: "~/git",
+                children: [
+                  {
+                    key: "~/git/demo",
+                    label: "demo",
+                    path: "~/git/demo",
+                    children: [
+                      {
+                        key: "leaf:agents",
+                        label: "AGENTS.md",
+                        nodeId: "agents",
+                        path: "~/git/demo/AGENTS.md",
+                        children: [],
+                        states: ["effective"],
+                        usageState: "used",
+                        score: 0,
+                        isDirectory: false,
+                      },
+                    ],
+                    states: [],
+                    usageState: "unused",
+                    score: 4,
+                    isDirectory: true,
+                  },
+                ],
+                states: [],
+                usageState: "unused",
+                score: 4,
+                isDirectory: true,
+              },
+            ],
+            states: [],
+            usageState: "unused",
+            score: 4,
+            isDirectory: true,
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse git" }));
+    expect(onToggleExpand).toHaveBeenCalledWith("~/git");
+    fireEvent.click(screen.getByRole("button", { name: "Select AGENTS.md" }));
+    expect(onSelect).toHaveBeenCalledWith("agents");
   });
 });

@@ -28,7 +28,10 @@ use crate::{
         docs::fetch_snapshot,
         edit::{inspect_payload, revert_last_save, save_edit},
         jobs::{JobRegistry, JobUpdate},
-        scan::{load_catalogs, load_surface_state, refresh_catalogs, scan_projects_with_progress, ScanProgress},
+        scan::{
+            load_catalogs, load_surface_state, refresh_catalogs, reindex_project_tool_with_progress,
+            scan_projects_with_progress, ScanProgress,
+        },
     },
     storage::Store,
 };
@@ -67,6 +70,7 @@ pub fn router(state: AppState) -> Router {
         .route("/", get(index))
         .route("/api/projects", get(get_projects))
         .route("/api/scan", post(post_scan))
+        .route("/api/projects/:id/reindex", post(post_project_reindex))
         .route("/api/projects/:id/graph", get(get_graph))
         .route("/api/projects/:id/inspect", get(get_inspect))
         .route("/api/projects/:id/inspect/save", post(post_inspect_save))
@@ -133,16 +137,60 @@ async fn post_scan(
     State(state): State<AppState>,
     Json(body): Json<Option<ScanBody>>,
 ) -> ApiResult<Json<JobStatus>> {
-    let job = state.jobs.create("scan", "Scanning projects.")?;
+    let job = state
+        .jobs
+        .create_scoped("scan", "Scanning projects.", Some("global"), None, None)?;
     let mut emitter = ScanProgressEmitter::new(state.jobs.clone(), job.clone());
-    let result = scan_projects_with_progress(&state.config, &state.store, body.and_then(|body| body.roots), |progress| {
-        emitter.emit(progress)
-    });
+    let result = scan_projects_with_progress(
+        &state.config,
+        &state.store,
+        body.and_then(|body| body.roots),
+        |progress| emitter.emit(progress),
+    );
     let job = match result {
         Ok(projects) => state.jobs.finish(
             job,
             "completed",
             &format!("Indexed {} project(s).", projects.len()),
+        )?,
+        Err(error) => state.jobs.finish(job, "failed", &error.to_string())?,
+    };
+    Ok(Json(job))
+}
+
+#[derive(Debug, Deserialize)]
+struct ProjectReindexBody {
+    tool: String,
+}
+
+async fn post_project_reindex(
+    State(state): State<AppState>,
+    Path(project_id): Path<String>,
+    Json(body): Json<ProjectReindexBody>,
+) -> ApiResult<Json<JobStatus>> {
+    let job = state.jobs.create_scoped(
+        "scan",
+        &format!("Reindexing {}.", body.tool),
+        Some("project_tool"),
+        Some(&project_id),
+        Some(&body.tool),
+    )?;
+    let mut emitter = ScanProgressEmitter::new(state.jobs.clone(), job.clone());
+    let result = reindex_project_tool_with_progress(
+        &state.config,
+        &state.store,
+        &project_id,
+        &body.tool,
+        |progress| emitter.emit(progress),
+    );
+    let job = match result {
+        Ok(surface) => state.jobs.finish(
+            job,
+            "completed",
+            &format!(
+                "Reindexed {} for {}.",
+                surface.tool.display_name, surface.project.display_path
+            ),
         )?,
         Err(error) => state.jobs.finish(job, "failed", &error.to_string())?,
     };

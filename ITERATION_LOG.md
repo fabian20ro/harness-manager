@@ -7,6 +7,16 @@
 
 ---
 
+### [2026-03-29] Inspect UX refactor + scoped project/tool reindex
+
+**Context:** inspect UX had layout/affordance problems: weak sidebar brand, misplaced collapse control, helper mismatch, double-scroll feel, non-collapsible tree, weak reindex visibility, no scoped reindex, wrong inspect column ratios
+**Happened:** added scoped `POST /api/projects/:id/reindex` backed by project inventory refresh + single-surface rebuild + union-graph rewrite; extended `JobStatus` with scope metadata; extracted UI inspect controller hook for persisted selection/fetch/SSE/reindex orchestration; rebuilt sidebar into brand/nav/footer; moved global reindex to footer and collapse to bottom; restyled top toolbar/helper; replaced compressed inspect trie with explicit expandable directory tree + persisted expansion state; converted inspect layout to 4-column desktop split with viewport-bound workspace and pane scrolling; strengthened scan status copy; expanded backend/frontend regression tests; verified `cargo test`, `npm test -- --run`, `npm run build`
+**Outcome:** success
+**Insight:** tree collapse and scoped refresh both depend on stable per-scope identifiers; once job payloads and UI storage keys carry explicit `project + tool` scope, reindex state, refresh invalidation, and tree persistence stay simple
+**Promoted:** no
+
+---
+
 ### [2026-03-29] Reindex bottom progress bar + live SSE scan status
 
 **Context:** reindex UX weak; only static sidebar message; no live folder-level feedback during scan

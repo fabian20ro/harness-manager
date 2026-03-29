@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { buildInspectTree, formatDisplayPath, pickNextSelectedNode, usageStateForStates } from "./inspect";
+import {
+  buildInspectTree,
+  collectRequiredExpandedKeys,
+  formatDisplayPath,
+  pickNextSelectedNode,
+  usageStateForStates,
+} from "./inspect";
 import type { SurfaceState } from "./types";
 
 const graph: SurfaceState = {
@@ -47,11 +53,18 @@ describe("inspect helpers", () => {
     expect(formatDisplayPath("~/git/harness-manager")).toBe("~/git/harness-manager");
   });
 
-  it("builds a compact tree rooted at ~", () => {
+  it("builds an explicit tree rooted at ~", () => {
     const tree = buildInspectTree(graph);
     expect(tree[0]?.label).toBe("~");
-    expect(tree[0]?.children.map((child) => child.label)).toContain(".codex/config.toml");
-    expect(tree[0]?.children.map((child) => child.label)).toContain("git/harness-manager");
+    expect(tree[0]?.children.map((child) => child.label)).toContain(".codex");
+    expect(tree[0]?.children.map((child) => child.label)).toContain("git");
+  });
+
+  it("keeps selected node ancestors expanded", () => {
+    const tree = buildInspectTree(graph);
+    expect(collectRequiredExpandedKeys(tree, "repo-file")).toEqual(
+      expect.arrayContaining(["~", "~/git", "~/git/harness-manager"]),
+    );
   });
 
   it("preserves selected node when still present", () => {

@@ -172,6 +172,78 @@ pub fn rebuild_surface_state(
     Ok(state)
 }
 
+pub fn reindex_project_tool_with_progress<F>(
+    config: &AppConfig,
+    store: &Store,
+    project_id: &str,
+    tool: &str,
+    mut on_progress: F,
+) -> Result<SurfaceState>
+where
+    F: FnMut(ScanProgress) -> Result<()>,
+{
+    store.ensure_layout()?;
+    let mut projects = store
+        .maybe_read_json::<Vec<ProjectSummary>>(&store.projects_index_path())?
+        .unwrap_or_default();
+    let project_index = projects
+        .iter()
+        .position(|project| project.id == project_id)
+        .context("project not found in index")?;
+    let project = projects[project_index].clone();
+    let repo_root = PathBuf::from(&project.root_path);
+    let repo_display_path = display_path(&repo_root, &config.home_dir);
+    let catalogs = load_catalogs(store)?;
+    let catalog = catalogs.get(tool).context("tool catalog not found")?;
+
+    on_progress(ScanProgress {
+        phase: "repo".to_string(),
+        message: format!("Reindexing {} for {}", catalog.display_name, repo_display_path),
+        current_path: Some(repo_display_path.clone()),
+        items_done: Some(0),
+        items_total: Some(1),
+    })?;
+
+    let inventory = collect_repo_files_with_progress(
+        &repo_root,
+        config.scan_max_depth,
+        &config.home_dir,
+        &mut |current_dir| {
+            on_progress(ScanProgress {
+                phase: "walk".to_string(),
+                message: format!("Scanning {current_dir}"),
+                current_path: Some(current_dir),
+                items_done: Some(0),
+                items_total: Some(1),
+            })
+        },
+    )?;
+    store.write_json(&store.inventory_path(project_id), &inventory)?;
+
+    let updated_project = ProjectSummary {
+        indexed_at: Utc::now(),
+        ..project
+    };
+    on_progress(ScanProgress {
+        phase: "surface".to_string(),
+        message: format!(
+            "Evaluating {} for {}",
+            catalog.display_name, repo_display_path
+        ),
+        current_path: Some(repo_display_path),
+        items_done: Some(1),
+        items_total: Some(1),
+    })?;
+    let state = build_surface_state(config, store, &updated_project, catalog, &inventory)?;
+    store.write_json(&store.tool_state_path(project_id, tool), &state)?;
+
+    projects[project_index] = updated_project;
+    store.write_json(&store.projects_index_path(), &projects)?;
+    rewrite_project_union_graph(store, project_id)?;
+
+    Ok(state)
+}
+
 fn scan_project(
     config: &AppConfig,
     store: &Store,
@@ -421,6 +493,36 @@ fn build_surface_state(
         verdicts,
         last_indexed_at: indexed_at,
     })
+}
+
+fn rewrite_project_union_graph(store: &Store, project_id: &str) -> Result<()> {
+    let mut union_nodes = BTreeMap::<String, GraphNode>::new();
+    let mut union_edges = Vec::<GraphEdge>::new();
+    let tool_state_dir = store.project_dir(project_id).join("tool-state");
+
+    if tool_state_dir.exists() {
+        let mut paths = fs::read_dir(&tool_state_dir)?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|extension| extension == "json"))
+            .collect::<Vec<_>>();
+        paths.sort();
+
+        for path in paths {
+            let state = store.read_json::<SurfaceState>(&path)?;
+            for node in state.nodes {
+                union_nodes.insert(node.id().to_string(), node);
+            }
+            union_edges.extend(state.edges);
+        }
+    }
+
+    store.write_json(
+        &store.graph_nodes_path(project_id),
+        &union_nodes.into_values().collect::<Vec<_>>(),
+    )?;
+    store.write_json(&store.graph_edges_path(project_id), &dedupe_edges(union_edges))?;
+    Ok(())
 }
 
 fn collect_artifacts_from_rules(
@@ -1382,8 +1484,8 @@ mod tests {
     };
 
     use super::{
-        build_surface_state, collect_repo_files, display_path, scan_projects,
-        scan_projects_with_progress,
+        build_surface_state, collect_repo_files, display_path, reindex_project_tool_with_progress,
+        scan_projects, scan_projects_with_progress,
     };
 
     #[test]
@@ -1459,6 +1561,81 @@ mod tests {
         assert!(progress
             .iter()
             .any(|update| update.current_path.as_deref() == Some("~/git/demo/docs")));
+    }
+
+    #[test]
+    fn scoped_reindex_refreshes_only_selected_surface_and_union_graph() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let repo = home.join("git").join("demo");
+        fs::create_dir_all(repo.join(".git")).expect("git dir");
+        fs::write(repo.join("AGENTS.md"), "Initial.\n").expect("agents");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".codex"), home.join(".claude")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        let projects = scan_projects(&config, &store, None).expect("scan");
+        let project = projects.first().expect("project");
+
+        let before_index = store
+            .read_json::<Vec<crate::domain::ProjectSummary>>(&store.projects_index_path())
+            .expect("projects index");
+        let before_project = before_index.first().expect("indexed project");
+        let claude_state_before = fs::read(store.tool_state_path(&project.id, "claude_code"))
+            .expect("claude state bytes");
+
+        fs::create_dir_all(repo.join("docs")).expect("docs dir");
+        fs::write(repo.join("AGENTS.md"), "@./docs/policy.md\n").expect("agents updated");
+        fs::write(repo.join("docs").join("policy.md"), "ok\n").expect("policy");
+
+        let mut progress = Vec::new();
+        let state = reindex_project_tool_with_progress(
+            &config,
+            &store,
+            &project.id,
+            "codex",
+            |update| {
+                progress.push(update);
+                Ok(())
+            },
+        )
+        .expect("scoped reindex");
+
+        assert_eq!(state.tool.id, "codex");
+        assert!(progress.iter().any(|update| update.phase == "repo"));
+        assert!(progress.iter().any(|update| update.phase == "walk"));
+        assert!(progress.iter().any(|update| update.phase == "surface"));
+
+        let after_index = store
+            .read_json::<Vec<crate::domain::ProjectSummary>>(&store.projects_index_path())
+            .expect("projects index");
+        let after_project = after_index.first().expect("indexed project");
+        assert!(after_project.indexed_at >= before_project.indexed_at);
+
+        let inventory = store
+            .read_json::<Vec<String>>(&store.inventory_path(&project.id))
+            .expect("inventory");
+        assert!(inventory.iter().any(|path| path == "docs/policy.md"));
+
+        let claude_state_after = fs::read(store.tool_state_path(&project.id, "claude_code"))
+            .expect("claude state bytes");
+        assert_eq!(claude_state_after, claude_state_before);
+
+        let graph_nodes = store
+            .read_json::<Vec<crate::domain::GraphNode>>(&store.graph_nodes_path(&project.id))
+            .expect("graph nodes");
+        assert!(graph_nodes.iter().any(|node| matches!(
+            node,
+            GraphNode::Artifact(artifact) if artifact.path.ends_with("docs/policy.md")
+        )));
     }
 
     #[test]

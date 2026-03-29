@@ -10,6 +10,10 @@ export function ScanStatusBar({ job }: ScanStatusBarProps) {
 
   const tone =
     job.status === "failed" ? "failed" : job.status === "completed" ? "completed" : "running";
+  const scopeLabel =
+    job.scope_kind === "project_tool"
+      ? `Project reindex${job.tool ? ` • ${job.tool}` : ""}`
+      : "Global reindex";
   const counts =
     typeof job.items_done === "number" && typeof job.items_total === "number"
       ? `${job.items_done}/${job.items_total}`
@@ -26,9 +30,10 @@ export function ScanStatusBar({ job }: ScanStatusBarProps) {
         {tone === "failed" ? "!" : tone === "completed" ? "✓" : "◌"}
       </span>
       <div className="scan-status-copy">
-        <strong>{job.message}</strong>
+        <strong>{scopeLabel}</strong>
         <span>
-          {job.current_path ? formatDisplayPath(job.current_path) : "Waiting for scan progress."}
+          {job.message}
+          {job.current_path ? ` • ${formatDisplayPath(job.current_path)}` : ""}
           {counts ? ` • ${counts}` : ""}
         </span>
       </div>

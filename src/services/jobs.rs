@@ -21,6 +21,9 @@ pub struct JobRegistry {
 pub struct JobUpdate {
     pub status: Option<String>,
     pub message: Option<String>,
+    pub scope_kind: Option<Option<String>>,
+    pub project_id: Option<Option<String>>,
+    pub tool: Option<Option<String>>,
     pub phase: Option<Option<String>>,
     pub current_path: Option<Option<String>>,
     pub items_done: Option<Option<usize>>,
@@ -42,6 +45,17 @@ impl JobRegistry {
     }
 
     pub fn create(&self, kind: &str, message: &str) -> Result<JobStatus> {
+        self.create_scoped(kind, message, None, None, None)
+    }
+
+    pub fn create_scoped(
+        &self,
+        kind: &str,
+        message: &str,
+        scope_kind: Option<&str>,
+        project_id: Option<&str>,
+        tool: Option<&str>,
+    ) -> Result<JobStatus> {
         let job = JobStatus {
             id: Uuid::new_v4().to_string(),
             kind: kind.to_string(),
@@ -49,6 +63,9 @@ impl JobRegistry {
             created_at: Utc::now(),
             finished_at: None,
             message: message.to_string(),
+            scope_kind: scope_kind.map(ToString::to_string),
+            project_id: project_id.map(ToString::to_string),
+            tool: tool.map(ToString::to_string),
             phase: None,
             current_path: None,
             items_done: None,
@@ -69,6 +86,15 @@ impl JobRegistry {
         }
         if let Some(message) = patch.message {
             job.message = message;
+        }
+        if let Some(scope_kind) = patch.scope_kind {
+            job.scope_kind = scope_kind;
+        }
+        if let Some(project_id) = patch.project_id {
+            job.project_id = project_id;
+        }
+        if let Some(tool) = patch.tool {
+            job.tool = tool;
         }
         if let Some(phase) = patch.phase {
             job.phase = phase;
@@ -136,6 +162,7 @@ mod tests {
                 job.clone(),
                 JobUpdate {
                     message: Some("Scanning ~/git/demo".to_string()),
+                    scope_kind: Some(Some("global".to_string())),
                     phase: Some(Some("repo".to_string())),
                     current_path: Some(Some("~/git/demo".to_string())),
                     items_done: Some(Some(1)),
@@ -147,6 +174,7 @@ mod tests {
 
         assert_eq!(updated.id, job.id);
         assert_eq!(updated.status, "running");
+        assert_eq!(updated.scope_kind.as_deref(), Some("global"));
         assert_eq!(updated.phase.as_deref(), Some("repo"));
         assert_eq!(updated.current_path.as_deref(), Some("~/git/demo"));
         assert_eq!(updated.items_done, Some(1));

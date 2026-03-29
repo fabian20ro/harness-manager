@@ -38,17 +38,19 @@ export type InspectTreeNode = {
   key: string;
   label: string;
   nodeId?: string;
-  path?: string;
+  path: string;
   children: InspectTreeNode[];
   states: string[];
   usageState: "used" | "unused" | "broken";
   score: number;
+  isDirectory: boolean;
 };
 
 type TrieNode = {
+  key: string;
   segment: string;
+  path: string;
   nodeId?: string;
-  path?: string;
   states: string[];
   children: Map<string, TrieNode>;
 };
@@ -103,19 +105,31 @@ export function buildInspectTree(graph: SurfaceState | null): InspectTreeNode[] 
   for (const entry of entries) {
     const parsed = splitDisplayPath(entry.path);
     if (!parsed) continue;
-    const root = ensureChild(rootMap, parsed.root, parsed.root);
+    const root = ensureChild(rootMap, parsed.root, parsed.root, parsed.root);
     let current = root;
+    let currentPath = parsed.root;
     for (const segment of parsed.segments) {
-      current = ensureChild(current.children, segment, segment);
+      currentPath = currentPath === "/" ? `/${segment}` : `${currentPath}/${segment}`;
+      current = ensureChild(current.children, currentPath, segment, currentPath);
     }
     current.nodeId = entry.nodeId;
-    current.path = entry.path;
     current.states = entry.states;
   }
 
   return [...rootMap.values()]
-    .map((root) => compressTrie(root))
+    .map((root) => finalizeTree(root))
     .sort((left, right) => left.label.localeCompare(right.label));
+}
+
+export function collectRequiredExpandedKeys(tree: InspectTreeNode[], selectedNodeId: string) {
+  const requiredKeys = new Set<string>();
+
+  for (const node of tree) {
+    requiredKeys.add(node.key);
+    collectSelectedAncestors(node, selectedNodeId, requiredKeys);
+  }
+
+  return [...requiredKeys];
 }
 
 function isPathBearing(path: string) {
@@ -139,11 +153,13 @@ function splitDisplayPath(path: string) {
   return null;
 }
 
-function ensureChild(map: Map<string, TrieNode>, key: string, segment: string) {
+function ensureChild(map: Map<string, TrieNode>, key: string, segment: string, path: string) {
   const existing = map.get(key);
   if (existing) return existing;
   const created: TrieNode = {
+    key,
     segment,
+    path,
     states: [],
     children: new Map<string, TrieNode>(),
   };
@@ -151,30 +167,48 @@ function ensureChild(map: Map<string, TrieNode>, key: string, segment: string) {
   return created;
 }
 
-function compressTrie(node: TrieNode): InspectTreeNode {
-  let label = node.segment;
-  let current = node;
-
-  while (!current.nodeId && current.children.size === 1) {
-    const child = [...current.children.values()][0];
-    label = `${label}/${child.segment}`;
-    current = child;
-  }
-
-  const children = [...current.children.values()]
-    .map((child) => compressTrie(child))
+function finalizeTree(node: TrieNode): InspectTreeNode {
+  const children = [...node.children.values()]
+    .map((child) => finalizeTree(child))
     .sort((left, right) => left.score - right.score || left.label.localeCompare(right.label));
+  const ownUsageState = usageStateForStates(node.states);
+  const childUsageStates = children.map((child) => child.usageState);
 
   return {
-    key: `${label}:${current.nodeId ?? label}`,
-    label,
-    nodeId: current.nodeId,
-    path: current.path,
+    key: node.key,
+    label: node.segment,
+    nodeId: node.nodeId,
+    path: node.path,
     children,
-    states: current.states,
-    usageState: usageStateForStates(current.states),
-    score: scoreStates(current.states),
+    states: node.states,
+    usageState:
+      ownUsageState === "used" ||
+      (!node.states.length && childUsageStates.includes("used"))
+        ? "used"
+        : ownUsageState === "broken" ||
+            (!node.states.length && childUsageStates.includes("broken"))
+          ? "broken"
+          : "unused",
+    score: Math.min(scoreStates(node.states), ...children.map((child) => child.score)),
+    isDirectory: children.length > 0,
   };
+}
+
+function collectSelectedAncestors(
+  node: InspectTreeNode,
+  selectedNodeId: string,
+  requiredKeys: Set<string>,
+): boolean {
+  const matches = node.nodeId === selectedNodeId;
+  const descendantMatches = node.children.some((child) =>
+    collectSelectedAncestors(child, selectedNodeId, requiredKeys),
+  );
+
+  if (node.children.length > 0 && descendantMatches) {
+    requiredKeys.add(node.key);
+  }
+
+  return matches || descendantMatches;
 }
 
 function scoreNode(node: GraphNodeRecord, verdicts: SurfaceState["verdicts"]) {

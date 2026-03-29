@@ -69,6 +69,9 @@ export type JobStatus = {
   created_at: string;
   finished_at?: string | null;
   message: string;
+  scope_kind?: string | null;
+  project_id?: string | null;
+  tool?: string | null;
   phase?: string | null;
   current_path?: string | null;
   items_done?: number | null;
