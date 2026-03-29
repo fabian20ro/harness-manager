@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildInspectTree, formatDisplayPath, pickNextSelectedNode } from "./inspect";
+import { buildInspectTree, formatDisplayPath, pickNextSelectedNode, usageStateForStates } from "./inspect";
 import type { SurfaceState } from "./types";
 
 const graph: SurfaceState = {
@@ -60,5 +60,12 @@ describe("inspect helpers", () => {
 
   it("falls back deterministically to the highest-priority node", () => {
     expect(pickNextSelectedNode("missing", graph.nodes, graph.verdicts)).toBe("global-config");
+  });
+
+  it("derives usage state from verdict states", () => {
+    expect(usageStateForStates(["effective"])).toBe("used");
+    expect(usageStateForStates(["observed"])).toBe("used");
+    expect(usageStateForStates(["referenced_only"])).toBe("unused");
+    expect(usageStateForStates(["broken_reference"])).toBe("broken");
   });
 });

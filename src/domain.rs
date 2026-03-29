@@ -171,6 +171,8 @@ pub struct PluginNode {
     pub install_root: String,
     pub display_path: String,
     pub manifest_path: Option<String>,
+    #[serde(default)]
+    pub discovery_sources: Vec<String>,
     pub states: Vec<NodeState>,
     pub confidence: f32,
     pub reason: String,
@@ -295,6 +297,14 @@ pub struct RemoteSnapshot {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EditableMetadata {
+    pub editable: bool,
+    pub edit_path: Option<String>,
+    pub version_token: Option<String>,
+    pub last_saved_backup_available: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct InspectPayload {
     pub entity: GraphNode,
     pub verdict: Option<Verdict>,
@@ -302,6 +312,7 @@ pub struct InspectPayload {
     pub outgoing_edges: Vec<GraphEdge>,
     pub related_activity: Vec<ObservationEvidence>,
     pub viewer_content: Option<String>,
+    pub edit: EditableMetadata,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -329,4 +340,18 @@ pub struct JobStatus {
     pub created_at: DateTime<Utc>,
     pub finished_at: Option<DateTime<Utc>>,
     pub message: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SaveInspectResponse {
+    pub inspect: InspectPayload,
+    pub graph: SurfaceState,
+    pub status_message: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EditBackup {
+    pub path: String,
+    pub content: String,
+    pub version_token: String,
 }

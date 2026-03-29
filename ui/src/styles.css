@@ -296,6 +296,30 @@ select {
   cursor: pointer;
   padding: 6px 8px;
   font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tree-node-indicator {
+  font-size: 0.7rem;
+  width: 0.8rem;
+  text-align: center;
+}
+
+.tree-node.usage-used,
+.tree-node-indicator.usage-used {
+  color: var(--repo);
+}
+
+.tree-node.usage-unused,
+.tree-node-indicator.usage-unused {
+  color: var(--inactive);
+}
+
+.tree-node.usage-broken,
+.tree-node-indicator.usage-broken {
+  color: var(--broken);
 }
 
 .viewer-pre {
@@ -312,6 +336,47 @@ select {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.viewer-reader,
+.viewer-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.viewer-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.viewer-toolbar button {
+  border: 1px solid var(--line);
+  background: var(--panel-strong);
+  border-radius: 10px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.viewer-textarea {
+  width: 100%;
+  min-height: 60vh;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(22, 35, 59, 0.92);
+  color: #f1efe8;
+  font-family: "SF Mono", "Berkeley Mono", monospace;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  padding: 14px;
+  white-space: pre-wrap;
+}
+
+.viewer-error {
+  margin: 0;
+  color: var(--broken);
+  font-size: 0.8rem;
 }
 
 .badge-row {

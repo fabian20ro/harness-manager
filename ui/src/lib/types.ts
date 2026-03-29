@@ -48,4 +48,16 @@ export type InspectPayload = {
   outgoing_edges: Array<{ to: string; edge_type: string; reason: string }>;
   related_activity: Array<{ payload_ref: string; confidence: number }>;
   viewer_content?: string;
+  edit: {
+    editable: boolean;
+    edit_path?: string;
+    version_token?: string;
+    last_saved_backup_available: boolean;
+  };
+};
+
+export type SaveInspectResponse = {
+  inspect: InspectPayload;
+  graph: SurfaceState;
+  status_message: string;
 };

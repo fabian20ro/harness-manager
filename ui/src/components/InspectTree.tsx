@@ -39,11 +39,14 @@ function TreeBranch({
       <div className="tree-row" style={{ paddingLeft: `${depth * 14}px` }}>
         {node.nodeId ? (
           <button
-            className={selected ? "tree-node active" : "tree-node"}
+            className={`${selected ? "tree-node active" : "tree-node"} usage-${node.usageState}`}
             onClick={() => onSelect(node.nodeId!)}
             title={node.path}
           >
-            {node.label}
+            <span className={`tree-node-indicator usage-${node.usageState}`} aria-hidden="true">
+              {node.usageState === "used" ? "●" : node.usageState === "broken" ? "!" : "○"}
+            </span>
+            <span>{node.label}</span>
           </button>
         ) : (
           <div className="tree-group">{node.label}</div>

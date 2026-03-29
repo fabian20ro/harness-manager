@@ -18,10 +18,11 @@ use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
 
 use crate::{
     config::AppConfig,
-    domain::{InspectPayload, JobStatus, SurfaceState, ToolCatalog},
+    domain::{InspectPayload, JobStatus, SaveInspectResponse, SurfaceState, ToolCatalog},
     services::{
         activity::refresh_activity,
         docs::fetch_snapshot,
+        edit::{inspect_payload, revert_last_save, save_edit},
         jobs::JobRegistry,
         scan::{load_catalogs, load_surface_state, refresh_catalogs, scan_projects},
     },
@@ -64,6 +65,11 @@ pub fn router(state: AppState) -> Router {
         .route("/api/scan", post(post_scan))
         .route("/api/projects/:id/graph", get(get_graph))
         .route("/api/projects/:id/inspect", get(get_inspect))
+        .route("/api/projects/:id/inspect/save", post(post_inspect_save))
+        .route(
+            "/api/projects/:id/inspect/revert-last-save",
+            post(post_inspect_revert_last_save),
+        )
         .route("/api/docs/fetch", post(post_docs_fetch))
         .route("/api/activity/refresh", post(post_activity_refresh))
         .route("/api/catalogs/refresh", post(post_catalog_refresh))
@@ -168,52 +174,60 @@ async fn get_inspect(
     Path(project_id): Path<String>,
     Query(query): Query<InspectQuery>,
 ) -> ApiResult<Json<InspectPayload>> {
-    let surface = load_surface_state(&state.store, &project_id, &query.tool)?;
-    let entity = surface
-        .nodes
-        .iter()
-        .find(|node| node.id() == query.node)
-        .cloned()
-        .ok_or_else(|| ApiError::not_found("node not found"))?;
-    let verdict = surface
-        .verdicts
-        .iter()
-        .find(|verdict| verdict.entity_id == query.node)
-        .cloned();
-    let incoming_edges = surface
-        .edges
-        .iter()
-        .filter(|edge| edge.to == query.node)
-        .cloned()
-        .collect();
-    let outgoing_edges = surface
-        .edges
-        .iter()
-        .filter(|edge| edge.from == query.node)
-        .cloned()
-        .collect();
-    let related_activity = state
-        .store
-        .maybe_read_json(&state.store.activity_path(&project_id, &query.tool))?
-        .unwrap_or_default();
+    Ok(Json(
+        inspect_payload(&state.store, &project_id, &query.tool, &query.node)
+            .map_err(ApiError::internal)?,
+    ))
+}
 
-    let viewer_content = match &entity {
-        crate::domain::GraphNode::Artifact(node) => std::fs::read_to_string(&node.path).ok(),
-        crate::domain::GraphNode::PluginArtifact(node) => std::fs::read_to_string(&node.path).ok(),
-        crate::domain::GraphNode::RemoteSnapshot(node) => {
-            std::fs::read_to_string(&node.content_path).ok()
-        }
-        _ => None,
-    };
+#[derive(Debug, Deserialize)]
+struct InspectSaveBody {
+    tool: String,
+    node: String,
+    content: String,
+    version_token: String,
+}
 
-    Ok(Json(InspectPayload {
-        entity,
-        verdict,
-        incoming_edges,
-        outgoing_edges,
-        related_activity,
-        viewer_content,
-    }))
+async fn post_inspect_save(
+    State(state): State<AppState>,
+    Path(project_id): Path<String>,
+    Json(body): Json<InspectSaveBody>,
+) -> ApiResult<Json<SaveInspectResponse>> {
+    Ok(Json(
+        save_edit(
+            &state.config,
+            &state.store,
+            &project_id,
+            &body.tool,
+            &body.node,
+            &body.content,
+            &body.version_token,
+        )
+        .map_err(ApiError::from_edit_error)?,
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+struct InspectRevertBody {
+    tool: String,
+    node: String,
+}
+
+async fn post_inspect_revert_last_save(
+    State(state): State<AppState>,
+    Path(project_id): Path<String>,
+    Json(body): Json<InspectRevertBody>,
+) -> ApiResult<Json<SaveInspectResponse>> {
+    Ok(Json(
+        revert_last_save(
+            &state.config,
+            &state.store,
+            &project_id,
+            &body.tool,
+            &body.node,
+        )
+        .map_err(ApiError::from_edit_error)?,
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -356,6 +370,34 @@ impl ApiError {
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             message: error.to_string(),
+        }
+    }
+
+    fn conflict(message: &str) -> Self {
+        Self {
+            status: StatusCode::CONFLICT,
+            message: message.to_string(),
+        }
+    }
+
+    fn bad_request(message: &str) -> Self {
+        Self {
+            status: StatusCode::BAD_REQUEST,
+            message: message.to_string(),
+        }
+    }
+
+    fn from_edit_error(error: anyhow::Error) -> Self {
+        let message = error.to_string();
+        if message.contains("Reload before saving") {
+            Self::conflict(&message)
+        } else if message.contains("No backup available")
+            || message.contains("Entity is not editable")
+            || message.contains("node not found")
+        {
+            Self::bad_request(&message)
+        } else {
+            Self::internal(error)
         }
     }
 }

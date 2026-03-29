@@ -14,7 +14,13 @@ import {
   pickNextSelectedNode,
   TOOL_IDS,
 } from "./lib/inspect";
-import type { GraphNodeRecord, InspectPayload, ProjectSummary, SurfaceState } from "./lib/types";
+import type {
+  GraphNodeRecord,
+  InspectPayload,
+  ProjectSummary,
+  SaveInspectResponse,
+  SurfaceState,
+} from "./lib/types";
 
 const BUILD_CHECK_MS = 180_000;
 const CURRENT_BUILD_ID = import.meta.env.VITE_BUILD_ID ?? "dev";
@@ -262,6 +268,69 @@ export function App() {
     setStatusMessage("Activity refresh complete.");
   }
 
+  async function reloadInspectNode() {
+    if (!selectedProject || !selectedNode) return;
+    const response = await fetch(
+      apiUrl(
+        apiBase,
+        `/api/projects/${selectedProject}/inspect?tool=${selectedTool}&node=${encodeURIComponent(selectedNode)}`,
+      ),
+    );
+    if (!response.ok) {
+      throw new Error(`Reload failed: ${response.status}`);
+    }
+    setInspect((await response.json()) as InspectPayload);
+    setStatusMessage("Reloaded from disk.");
+  }
+
+  async function saveInspectContent(content: string, versionToken: string) {
+    if (!selectedProject || !selectedNode) return;
+    const response = await fetch(
+      apiUrl(apiBase, `/api/projects/${selectedProject}/inspect/save`),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tool: selectedTool,
+          node: selectedNode,
+          content,
+          version_token: versionToken,
+        }),
+      },
+    );
+    if (!response.ok) {
+      const payload = (await response.json()) as { error?: string };
+      throw new Error(payload.error ?? `Save failed: ${response.status}`);
+    }
+    const payload = (await response.json()) as SaveInspectResponse;
+    setGraph(payload.graph);
+    setInspect(payload.inspect);
+    setStatusMessage(payload.status_message);
+  }
+
+  async function revertInspectSave() {
+    if (!selectedProject || !selectedNode) return;
+    const response = await fetch(
+      apiUrl(apiBase, `/api/projects/${selectedProject}/inspect/revert-last-save`),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tool: selectedTool,
+          node: selectedNode,
+        }),
+      },
+    );
+    if (!response.ok) {
+      const payload = (await response.json()) as { error?: string };
+      throw new Error(payload.error ?? `Revert failed: ${response.status}`);
+    }
+    const payload = (await response.json()) as SaveInspectResponse;
+    setGraph(payload.graph);
+    setInspect(payload.inspect);
+    setStatusMessage(payload.status_message);
+  }
+
   return (
     <div className={sidebarCollapsed ? "shell shell-collapsed" : "shell"}>
       <SidebarNav
@@ -357,7 +426,16 @@ export function App() {
             </div>
             <div className="panel center inspect-panel">
               <h2>{currentNode ? getNodeLabel(currentNode) : "Viewer"}</h2>
-              <ViewerPane content={inspect?.viewer_content} />
+              <ViewerPane
+                nodeKey={selectedNode}
+                content={inspect?.viewer_content}
+                editable={inspect?.edit.editable}
+                versionToken={inspect?.edit.version_token}
+                lastSavedBackupAvailable={inspect?.edit.last_saved_backup_available}
+                onSave={saveInspectContent}
+                onReload={reloadInspectNode}
+                onRevert={revertInspectSave}
+              />
             </div>
             <div className="panel right inspect-panel">
               <h2>Reasons</h2>

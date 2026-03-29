@@ -22,6 +22,7 @@ impl Store {
         fs::create_dir_all(self.root.join("snapshots"))?;
         fs::create_dir_all(self.root.join("activity"))?;
         fs::create_dir_all(self.root.join("jobs"))?;
+        fs::create_dir_all(self.root.join("edit-backups"))?;
         Ok(())
     }
 
@@ -66,6 +67,13 @@ impl Store {
         self.root.join("jobs").join(format!("{job_id}.json"))
     }
 
+    pub fn edit_backup_path(&self, project_id: &str, node_id: &str) -> PathBuf {
+        self.root
+            .join("edit-backups")
+            .join(project_id)
+            .join(format!("{node_id}.json"))
+    }
+
     pub fn write_json<T: Serialize>(&self, path: &Path, value: &T) -> Result<()> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
@@ -86,5 +94,15 @@ impl Store {
             return Ok(None);
         }
         self.read_json(path).map(Some)
+    }
+
+    pub fn write_text_atomic(&self, path: &Path, content: &str) -> Result<()> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let tmp = path.with_extension("tmp");
+        fs::write(&tmp, content)?;
+        fs::rename(tmp, path)?;
+        Ok(())
     }
 }

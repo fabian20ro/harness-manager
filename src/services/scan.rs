@@ -36,6 +36,17 @@ struct ReferenceCollection {
     promotable_edges: Vec<PromotableEdge>,
 }
 
+#[derive(Clone, Debug)]
+struct PluginCandidate {
+    key: String,
+    name: String,
+    install_root: PathBuf,
+    manifest_path: Option<PathBuf>,
+    readme_path: Option<PathBuf>,
+    discovery_sources: Vec<String>,
+    disabled: bool,
+}
+
 pub fn refresh_catalogs(
     store: &Store,
     supplied_catalogs: Option<Vec<ToolCatalog>>,
@@ -95,6 +106,27 @@ pub fn scan_projects(
 
 pub fn load_surface_state(store: &Store, project_id: &str, tool: &str) -> Result<SurfaceState> {
     store.read_json(&store.tool_state_path(project_id, tool))
+}
+
+pub fn rebuild_surface_state(
+    config: &AppConfig,
+    store: &Store,
+    project_id: &str,
+    tool: &str,
+) -> Result<SurfaceState> {
+    let projects = store
+        .maybe_read_json::<Vec<ProjectSummary>>(&store.projects_index_path())?
+        .unwrap_or_default();
+    let project = projects
+        .into_iter()
+        .find(|project| project.id == project_id)
+        .context("project not found in index")?;
+    let inventory = store.read_json::<Vec<String>>(&store.inventory_path(project_id))?;
+    let catalogs = load_catalogs(store)?;
+    let catalog = catalogs.get(tool).context("tool catalog not found")?;
+    let state = build_surface_state(config, store, &project, catalog, &inventory)?;
+    store.write_json(&store.tool_state_path(project_id, tool), &state)?;
+    Ok(state)
 }
 
 fn scan_project(
@@ -416,140 +448,291 @@ fn collect_plugins(
         .iter()
         .map(|path| resolve_catalog_path(path, &config.home_dir, Some(repo_root)))
         .collect::<Vec<_>>();
+    let candidates = discover_plugins(config, plugin_system, repo_root, &config_paths)?;
+    for candidate in candidates {
+        let mut states = vec![NodeState::Installed, NodeState::Configured];
+        let reason = if candidate.disabled {
+            states.push(NodeState::Inactive);
+            format!(
+                "Plugin discovered via {} but disabled in config.",
+                candidate.discovery_sources.join(", ")
+            )
+        } else {
+            states.push(NodeState::Effective);
+            format!(
+                "Plugin discovered via {} and not disabled in config.",
+                candidate.discovery_sources.join(", ")
+            )
+        };
+        let plugin_id = stable_id("plugin", &format!("{}:{}", plugin_system.system, candidate.key));
+        let plugin_node = GraphNode::Plugin(PluginNode {
+            id: plugin_id.clone(),
+            name: candidate.name.clone(),
+            plugin_system: plugin_system.system.clone(),
+            install_root: candidate.install_root.to_string_lossy().to_string(),
+            display_path: display_path(&candidate.install_root, &config.home_dir),
+            manifest_path: candidate
+                .manifest_path
+                .as_ref()
+                .map(|path| path.to_string_lossy().to_string()),
+            discovery_sources: candidate.discovery_sources.clone(),
+            states: states.clone(),
+            confidence: if candidate.disabled { 0.88 } else { 0.94 },
+            reason: reason.clone(),
+        });
+        verdicts.push(node_verdict(&plugin_id, &states, &reason));
+        edges.push(GraphEdge {
+            from: plugin_id.clone(),
+            to: tool_node.id().to_string(),
+            edge_type: EdgeType::InstalledIn,
+            hardness: "hard".to_string(),
+            reason: format!("Plugin belongs to {} plugin system.", catalog.display_name),
+        });
+        edges.push(GraphEdge {
+            from: plugin_id.clone(),
+            to: tool_node.id().to_string(),
+            edge_type: if candidate.disabled {
+                EdgeType::Disables
+            } else {
+                EdgeType::Enables
+            },
+            hardness: "hard".to_string(),
+            reason: if candidate.disabled {
+                "Config explicitly disables plugin.".to_string()
+            } else {
+                "Config leaves plugin enabled.".to_string()
+            },
+        });
+        for compatibility in &plugin_system.compatibility {
+            edges.push(GraphEdge {
+                from: plugin_id.clone(),
+                to: format!("tool:{compatibility}"),
+                edge_type: EdgeType::CompatibleWith,
+                hardness: "soft".to_string(),
+                reason: "Catalog declares compatibility.".to_string(),
+            });
+        }
 
-    for install_root in &plugin_system.install_roots {
-        let root = resolve_catalog_path(install_root, &config.home_dir, Some(repo_root));
+        if let Some(manifest) = &candidate.manifest_path {
+            let artifact_id = stable_id("plugin_artifact", &manifest.to_string_lossy());
+            nodes.push(GraphNode::PluginArtifact(PluginArtifactNode {
+                id: artifact_id.clone(),
+                plugin_id: plugin_id.clone(),
+                path: manifest.to_string_lossy().to_string(),
+                display_path: display_path(manifest, &config.home_dir),
+                artifact_type: ArtifactType::PluginManifest,
+                states: vec![NodeState::Declared, NodeState::Effective],
+                confidence: 0.95,
+                reason: format!(
+                    "Plugin manifest detected via {}.",
+                    candidate.discovery_sources.join(", ")
+                ),
+            }));
+            edges.push(GraphEdge {
+                from: plugin_id.clone(),
+                to: artifact_id.clone(),
+                edge_type: EdgeType::ProvidesArtifact,
+                hardness: "hard".to_string(),
+                reason: "Plugin manifest belongs to plugin.".to_string(),
+            });
+        }
+        if let Some(readme) = &candidate.readme_path {
+            let artifact_id = stable_id("plugin_artifact", &readme.to_string_lossy());
+            nodes.push(GraphNode::PluginArtifact(PluginArtifactNode {
+                id: artifact_id.clone(),
+                plugin_id: plugin_id.clone(),
+                path: readme.to_string_lossy().to_string(),
+                display_path: display_path(readme, &config.home_dir),
+                artifact_type: ArtifactType::PluginDoc,
+                states: vec![NodeState::Declared],
+                confidence: 0.7,
+                reason: "Plugin documentation detected.".to_string(),
+            }));
+            edges.push(GraphEdge {
+                from: plugin_id.clone(),
+                to: artifact_id.clone(),
+                edge_type: EdgeType::ProvidesArtifact,
+                hardness: "soft".to_string(),
+                reason: "Plugin doc belongs to plugin.".to_string(),
+            });
+        }
+        nodes.push(plugin_node);
+    }
+    Ok((nodes, edges, verdicts))
+}
+
+fn discover_plugins(
+    config: &AppConfig,
+    plugin_system: &crate::domain::PluginSystemCatalog,
+    repo_root: &Path,
+    config_paths: &[PathBuf],
+) -> Result<Vec<PluginCandidate>> {
+    let mut candidates = HashMap::<String, PluginCandidate>::new();
+    match plugin_system.system.as_str() {
+        "codex" => {
+            let mut roots = plugin_system
+                .install_roots
+                .iter()
+                .map(|path| resolve_catalog_path(path, &config.home_dir, Some(repo_root)))
+                .collect::<Vec<_>>();
+            roots.push(
+                config
+                    .home_dir
+                    .join(".codex")
+                    .join(".tmp")
+                    .join("plugins")
+                    .join("plugins"),
+            );
+            for plugin_root in discover_plugin_roots(&roots, ".codex-plugin", config.scan_max_depth + 3)
+            {
+                merge_plugin_candidate(
+                    &mut candidates,
+                    plugin_candidate(&plugin_root, ".codex-plugin", "cache_layout", config_paths),
+                );
+            }
+        }
+        "claude" => {
+            let installed_path = config
+                .home_dir
+                .join(".claude")
+                .join("plugins")
+                .join("installed_plugins.json");
+            for plugin_root in read_claude_installed_paths(&installed_path) {
+                merge_plugin_candidate(
+                    &mut candidates,
+                    plugin_candidate(&plugin_root, ".claude-plugin", "install_index", config_paths),
+                );
+            }
+            let mut roots = plugin_system
+                .install_roots
+                .iter()
+                .map(|path| resolve_catalog_path(path, &config.home_dir, Some(repo_root)))
+                .collect::<Vec<_>>();
+            roots.push(config.home_dir.join(".claude").join("plugins").join("marketplaces"));
+            roots.push(config.home_dir.join(".claude").join("plugins").join("cache"));
+            for plugin_root in discover_plugin_roots(&roots, ".claude-plugin", config.scan_max_depth + 4)
+            {
+                let source = if plugin_root.to_string_lossy().contains("/marketplaces/") {
+                    "marketplace_layout"
+                } else {
+                    "cache_layout"
+                };
+                merge_plugin_candidate(
+                    &mut candidates,
+                    plugin_candidate(&plugin_root, ".claude-plugin", source, config_paths),
+                );
+            }
+        }
+        _ => {}
+    }
+    let mut values = candidates.into_values().collect::<Vec<_>>();
+    values.sort_by(|left, right| left.name.cmp(&right.name));
+    Ok(values)
+}
+
+fn discover_plugin_roots(roots: &[PathBuf], marker_dir: &str, max_depth: usize) -> Vec<PathBuf> {
+    let mut discovered = HashSet::new();
+    for root in roots {
         if !root.exists() {
             continue;
         }
-        for entry in fs::read_dir(&root)? {
-            let entry = entry?;
-            let plugin_root = entry.path();
-            if !plugin_root.is_dir() {
-                continue;
+        for entry in WalkDir::new(root)
+            .max_depth(max_depth)
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_type().is_dir())
+        {
+            if entry.file_name().to_string_lossy() == marker_dir {
+                if let Some(parent) = entry.path().parent() {
+                    discovered.insert(parent.to_path_buf());
+                }
             }
-
-            let manifest = plugin_system
-                .manifest_paths
-                .iter()
-                .map(|rel| plugin_root.join(rel))
-                .find(|path| path.exists());
-            let plugin_name = manifest
-                .as_ref()
-                .and_then(|path| read_plugin_name(path))
-                .or_else(|| {
-                    plugin_root
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .map(ToString::to_string)
-                })
-                .unwrap_or_else(|| "unknown-plugin".to_string());
-            let disabled = plugin_disabled(&plugin_name, &config_paths);
-            let mut states = vec![NodeState::Installed, NodeState::Configured];
-            let reason = if disabled {
-                states.push(NodeState::Inactive);
-                "Plugin installed locally but disabled in config.".to_string()
-            } else {
-                states.push(NodeState::Effective);
-                "Plugin installed locally and not disabled in config.".to_string()
-            };
-            let plugin_id = stable_id(
-                "plugin",
-                &format!("{}:{}", plugin_system.system, plugin_root.display()),
-            );
-            let plugin_node = GraphNode::Plugin(PluginNode {
-                id: plugin_id.clone(),
-                name: plugin_name.clone(),
-                plugin_system: plugin_system.system.clone(),
-                install_root: plugin_root.to_string_lossy().to_string(),
-                display_path: display_path(&plugin_root, &config.home_dir),
-                manifest_path: manifest
-                    .as_ref()
-                    .map(|path| path.to_string_lossy().to_string()),
-                states: states.clone(),
-                confidence: if disabled { 0.88 } else { 0.94 },
-                reason: reason.clone(),
-            });
-            verdicts.push(node_verdict(&plugin_id, &states, &reason));
-            edges.push(GraphEdge {
-                from: plugin_id.clone(),
-                to: tool_node.id().to_string(),
-                edge_type: EdgeType::InstalledIn,
-                hardness: "hard".to_string(),
-                reason: format!("Plugin belongs to {} plugin system.", catalog.display_name),
-            });
-            if disabled {
-                edges.push(GraphEdge {
-                    from: plugin_id.clone(),
-                    to: tool_node.id().to_string(),
-                    edge_type: EdgeType::Disables,
-                    hardness: "hard".to_string(),
-                    reason: "Config explicitly disables plugin.".to_string(),
-                });
-            } else {
-                edges.push(GraphEdge {
-                    from: plugin_id.clone(),
-                    to: tool_node.id().to_string(),
-                    edge_type: EdgeType::Enables,
-                    hardness: "hard".to_string(),
-                    reason: "Config leaves plugin enabled.".to_string(),
-                });
-            }
-            for compatibility in &plugin_system.compatibility {
-                edges.push(GraphEdge {
-                    from: plugin_id.clone(),
-                    to: format!("tool:{compatibility}"),
-                    edge_type: EdgeType::CompatibleWith,
-                    hardness: "soft".to_string(),
-                    reason: "Catalog declares compatibility.".to_string(),
-                });
-            }
-
-            if let Some(manifest) = &manifest {
-                let artifact_id = stable_id("plugin_artifact", &manifest.to_string_lossy());
-                nodes.push(GraphNode::PluginArtifact(PluginArtifactNode {
-                    id: artifact_id.clone(),
-                    plugin_id: plugin_id.clone(),
-                    path: manifest.to_string_lossy().to_string(),
-                    display_path: display_path(manifest, &config.home_dir),
-                    artifact_type: ArtifactType::PluginManifest,
-                    states: vec![NodeState::Declared, NodeState::Effective],
-                    confidence: 0.95,
-                    reason: "Plugin manifest detected.".to_string(),
-                }));
-                edges.push(GraphEdge {
-                    from: plugin_id.clone(),
-                    to: artifact_id.clone(),
-                    edge_type: EdgeType::ProvidesArtifact,
-                    hardness: "hard".to_string(),
-                    reason: "Plugin manifest belongs to plugin.".to_string(),
-                });
-            }
-            let readme = plugin_root.join("README.md");
-            if readme.exists() {
-                let artifact_id = stable_id("plugin_artifact", &readme.to_string_lossy());
-                nodes.push(GraphNode::PluginArtifact(PluginArtifactNode {
-                    id: artifact_id.clone(),
-                    plugin_id: plugin_id.clone(),
-                    path: readme.to_string_lossy().to_string(),
-                    display_path: display_path(&readme, &config.home_dir),
-                    artifact_type: ArtifactType::PluginDoc,
-                    states: vec![NodeState::Declared],
-                    confidence: 0.7,
-                    reason: "Plugin documentation detected.".to_string(),
-                }));
-                edges.push(GraphEdge {
-                    from: plugin_id.clone(),
-                    to: artifact_id.clone(),
-                    edge_type: EdgeType::ProvidesArtifact,
-                    hardness: "soft".to_string(),
-                    reason: "Plugin doc belongs to plugin.".to_string(),
-                });
-            }
-            nodes.push(plugin_node);
         }
     }
-    Ok((nodes, edges, verdicts))
+    let mut roots = discovered.into_iter().collect::<Vec<_>>();
+    roots.sort();
+    roots
+}
+
+fn plugin_candidate(
+    plugin_root: &Path,
+    marker_dir: &str,
+    discovery_source: &str,
+    config_paths: &[PathBuf],
+) -> PluginCandidate {
+    let manifest_path = [
+        plugin_root.join(marker_dir).join("plugin.json"),
+        plugin_root.join("plugin.json"),
+        plugin_root.join("package.json"),
+    ]
+    .into_iter()
+    .find(|path| path.exists());
+    let plugin_name = manifest_path
+        .as_ref()
+        .and_then(|path| read_plugin_name(path))
+        .or_else(|| {
+            plugin_root
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(ToString::to_string)
+        })
+        .unwrap_or_else(|| "unknown-plugin".to_string());
+    PluginCandidate {
+        key: plugin_name.clone(),
+        name: plugin_name.clone(),
+        install_root: plugin_root.to_path_buf(),
+        manifest_path,
+        readme_path: plugin_root.join("README.md").exists().then(|| plugin_root.join("README.md")),
+        discovery_sources: vec![discovery_source.to_string()],
+        disabled: plugin_disabled(&plugin_name, config_paths),
+    }
+}
+
+fn merge_plugin_candidate(
+    candidates: &mut HashMap<String, PluginCandidate>,
+    candidate: PluginCandidate,
+) {
+    let key = candidate.key.clone();
+    if let Some(existing) = candidates.get_mut(&key) {
+        if existing.manifest_path.is_none() {
+            existing.manifest_path = candidate.manifest_path.clone();
+        }
+        if existing.readme_path.is_none() {
+            existing.readme_path = candidate.readme_path.clone();
+        }
+        if candidate.install_root.to_string_lossy().len() < existing.install_root.to_string_lossy().len() {
+            existing.install_root = candidate.install_root.clone();
+        }
+        existing.disabled = existing.disabled || candidate.disabled;
+        for source in candidate.discovery_sources {
+            if !existing.discovery_sources.contains(&source) {
+                existing.discovery_sources.push(source);
+            }
+        }
+        return;
+    }
+    candidates.insert(key, candidate);
+}
+
+fn read_claude_installed_paths(path: &Path) -> Vec<PathBuf> {
+    let Ok(text) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return Vec::new();
+    };
+    value
+        .get("plugins")
+        .and_then(|plugins| plugins.as_object())
+        .map(|plugins| {
+            plugins
+                .values()
+                .flat_map(|entries| entries.as_array().into_iter().flatten())
+                .filter_map(|entry| entry.get("installPath").and_then(|value| value.as_str()))
+                .map(PathBuf::from)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
 }
 
 fn collect_reference_edges(
@@ -935,6 +1118,27 @@ fn display_path(path: &Path, home_dir: &Path) -> String {
     }
 }
 
+#[cfg(test)]
+pub(crate) fn build_surface_state_for_test(
+    config: &AppConfig,
+    store: &Store,
+    project: &ProjectSummary,
+    catalog: &ToolCatalog,
+    inventory: &[String],
+) -> Result<SurfaceState> {
+    build_surface_state(config, store, project, catalog, inventory)
+}
+
+#[cfg(test)]
+pub(crate) fn collect_repo_files_for_test(root: &Path, max_depth: usize) -> Vec<String> {
+    collect_repo_files(root, max_depth)
+}
+
+#[cfg(test)]
+pub(crate) fn display_path_for_test(path: &Path, home_dir: &Path) -> String {
+    display_path(path, home_dir)
+}
+
 fn confidence_from_states(states: &[NodeState]) -> f32 {
     if states.contains(&NodeState::Observed) {
         0.98
@@ -993,27 +1197,49 @@ fn plugin_disabled(plugin_name: &str, config_paths: &[PathBuf]) -> bool {
         match path.extension().and_then(|ext| ext.to_str()) {
             Some("toml") => toml::from_str::<toml::Value>(&text)
                 .ok()
-                .and_then(|value| {
-                    value
-                        .get("plugins")
-                        .and_then(|plugins| plugins.get(plugin_name))
-                        .and_then(|entry| entry.get("enabled"))
-                        .and_then(|flag| flag.as_bool())
-                })
+                .and_then(|value| plugin_enabled_flag_toml(&value, plugin_name))
                 .is_some_and(|enabled| !enabled),
             Some("json") => serde_json::from_str::<serde_json::Value>(&text)
                 .ok()
-                .and_then(|value| {
-                    value
-                        .get("plugins")
-                        .and_then(|plugins| plugins.get(plugin_name))
-                        .and_then(|entry| entry.get("enabled"))
-                        .and_then(|flag| flag.as_bool())
-                })
+                .and_then(|value| plugin_enabled_flag_json(&value, plugin_name))
                 .is_some_and(|enabled| !enabled),
             _ => false,
         }
     })
+}
+
+fn plugin_enabled_flag_toml(value: &toml::Value, plugin_name: &str) -> Option<bool> {
+    value
+        .get("plugins")
+        .and_then(|plugins| plugins.as_table())
+        .and_then(|plugins| {
+            plugins.iter().find_map(|(key, entry)| {
+                plugin_alias_matches(key, plugin_name)
+                    .then(|| entry.get("enabled").and_then(|flag| flag.as_bool()))
+                    .flatten()
+            })
+        })
+}
+
+fn plugin_enabled_flag_json(value: &serde_json::Value, plugin_name: &str) -> Option<bool> {
+    value
+        .get("plugins")
+        .and_then(|plugins| plugins.as_object())
+        .and_then(|plugins| {
+            plugins.iter().find_map(|(key, entry)| {
+                plugin_alias_matches(key, plugin_name)
+                    .then(|| entry.get("enabled").and_then(|flag| flag.as_bool()))
+                    .flatten()
+            })
+        })
+}
+
+fn plugin_alias_matches(config_key: &str, plugin_name: &str) -> bool {
+    config_key == plugin_name
+        || config_key
+            .split('@')
+            .next()
+            .is_some_and(|prefix| prefix == plugin_name)
 }
 
 #[cfg(test)]
@@ -1306,6 +1532,66 @@ mod tests {
     }
 
     #[test]
+    fn docs_map_table_references_become_effective() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let repo = home.join("git").join("demo");
+        fs::create_dir_all(repo.join(".git")).expect("git dir");
+        fs::create_dir_all(repo.join("docs").join("CODEMAPS")).expect("docs dir");
+        fs::write(repo.join("AGENTS.md"), "Read CLAUDE.md\n").expect("agents");
+        fs::write(
+            repo.join("CLAUDE.md"),
+            "## Docs Map\n\n| Need | Read |\n|---|---|\n| Conventions | `docs/CONTRIB.md` |\n| Architecture | `docs/CODEMAPS/architecture.md` |\n",
+        )
+        .expect("claude");
+        fs::write(repo.join("docs").join("CONTRIB.md"), "ok").expect("contrib");
+        fs::write(repo.join("docs").join("CODEMAPS").join("architecture.md"), "ok")
+            .expect("architecture");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".codex")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        let inventory = collect_repo_files(&repo, 5);
+        let state = build_surface_state(
+            &config,
+            &store,
+            &crate::domain::ProjectSummary {
+                id: "demo".to_string(),
+                root_path: repo.to_string_lossy().to_string(),
+                display_path: display_path(&repo, &home),
+                name: "demo".to_string(),
+                indexed_at: Utc::now(),
+                status: "ready".to_string(),
+            },
+            &seed_catalog_map().expect("catalogs")["codex"],
+            &inventory,
+        )
+        .expect("state");
+
+        for expected in ["docs/CONTRIB.md", "docs/CODEMAPS/architecture.md"] {
+            let node = state
+                .nodes
+                .iter()
+                .find_map(|node| match node {
+                    GraphNode::Artifact(artifact) if artifact.path.ends_with(expected) => {
+                        Some(artifact)
+                    }
+                    _ => None,
+                })
+                .expect("docs-map node");
+            assert!(node.states.contains(&NodeState::Effective));
+        }
+    }
+
+    #[test]
     fn typed_config_reference_targets_become_effective() {
         let temp = TempDir::new().expect("tempdir");
         let home = temp.path().join("home");
@@ -1367,5 +1653,139 @@ mod tests {
             .why_included
             .iter()
             .any(|line| line.contains("Effective via")));
+    }
+
+    #[test]
+    fn codex_plugins_discovered_from_cache_layout() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let repo = home.join("git").join("demo");
+        fs::create_dir_all(repo.join(".git")).expect("git dir");
+        let plugin_root = home
+            .join(".codex")
+            .join(".tmp")
+            .join("plugins")
+            .join("plugins")
+            .join("github");
+        fs::create_dir_all(plugin_root.join(".codex-plugin")).expect("plugin dir");
+        fs::write(
+            plugin_root.join(".codex-plugin").join("plugin.json"),
+            r#"{"name":"github"}"#,
+        )
+        .expect("manifest");
+        fs::write(
+            home.join(".codex").join("config.toml"),
+            "[plugins.\"github@openai-curated\"]\nenabled = true\n",
+        )
+        .expect("config");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".codex")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        let inventory = collect_repo_files(&repo, 5);
+        let state = build_surface_state(
+            &config,
+            &store,
+            &crate::domain::ProjectSummary {
+                id: "demo".to_string(),
+                root_path: repo.to_string_lossy().to_string(),
+                display_path: display_path(&repo, &home),
+                name: "demo".to_string(),
+                indexed_at: Utc::now(),
+                status: "ready".to_string(),
+            },
+            &seed_catalog_map().expect("catalogs")["codex"],
+            &inventory,
+        )
+        .expect("state");
+
+        let plugin = state
+            .nodes
+            .iter()
+            .find_map(|node| match node {
+                GraphNode::Plugin(plugin) if plugin.name == "github" => Some(plugin),
+                _ => None,
+            })
+            .expect("plugin node");
+        assert!(plugin.discovery_sources.iter().any(|source| source == "cache_layout"));
+    }
+
+    #[test]
+    fn claude_plugins_discovered_from_installed_index() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let repo = home.join("git").join("demo");
+        fs::create_dir_all(repo.join(".git")).expect("git dir");
+        let install_root = home
+            .join(".claude")
+            .join("plugins")
+            .join("cache")
+            .join("claude-plugins-official")
+            .join("github")
+            .join("1.0.0");
+        fs::create_dir_all(install_root.join(".claude-plugin")).expect("plugin dir");
+        fs::write(
+            install_root.join(".claude-plugin").join("plugin.json"),
+            r#"{"name":"github"}"#,
+        )
+        .expect("manifest");
+        fs::create_dir_all(home.join(".claude").join("plugins")).expect("plugins dir");
+        fs::write(
+            home.join(".claude").join("plugins").join("installed_plugins.json"),
+            format!(
+                r#"{{"version":2,"plugins":{{"github@claude-plugins-official":[{{"installPath":"{}"}}]}}}}"#,
+                install_root.display()
+            ),
+        )
+        .expect("installed index");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".claude")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        let inventory = collect_repo_files(&repo, 5);
+        let state = build_surface_state(
+            &config,
+            &store,
+            &crate::domain::ProjectSummary {
+                id: "demo".to_string(),
+                root_path: repo.to_string_lossy().to_string(),
+                display_path: display_path(&repo, &home),
+                name: "demo".to_string(),
+                indexed_at: Utc::now(),
+                status: "ready".to_string(),
+            },
+            &seed_catalog_map().expect("catalogs")["claude_code"],
+            &inventory,
+        )
+        .expect("state");
+
+        let plugin = state
+            .nodes
+            .iter()
+            .find_map(|node| match node {
+                GraphNode::Plugin(plugin) if plugin.name == "github" => Some(plugin),
+                _ => None,
+            })
+            .expect("plugin node");
+        assert!(plugin
+            .discovery_sources
+            .iter()
+            .any(|source| source == "install_index"));
     }
 }

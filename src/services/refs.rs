@@ -12,6 +12,9 @@ use crate::domain::{ArtifactType, EdgeType};
 pub enum ReferenceSourceKind {
     GenericText,
     InstructionImport,
+    InstructionDirective,
+    InstructionTableRef,
+    InstructionCodeSpanRef,
     TypedConfigField,
     PluginManifest,
 }
@@ -78,6 +81,7 @@ fn instruction_imports(context: &ResolverContext<'_>, content: &str) -> Vec<Refe
         })
         .collect::<Vec<_>>();
     hits.extend(instruction_directives(context, content));
+    hits.extend(instruction_structured_refs(context, content));
     hits
 }
 
@@ -100,13 +104,59 @@ fn instruction_directives(context: &ResolverContext<'_>, content: &str) -> Vec<R
                         context,
                         raw,
                         EdgeType::References,
-                        ReferenceSourceKind::InstructionImport,
+                        ReferenceSourceKind::InstructionDirective,
                         "instruction_directive",
                         format!(
                             "Instruction directive found in {}.",
                             context.base_display_path
                         ),
                         0.93,
+                        true,
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn instruction_structured_refs(context: &ResolverContext<'_>, content: &str) -> Vec<ReferenceHit> {
+    let code_span = Regex::new(r"`([^`\n]+\.(?:md|toml|json|yaml|yml|txt))`")
+        .expect("instruction code span regex");
+
+    content
+        .lines()
+        .flat_map(|line| {
+            let is_table = line.contains('|');
+            code_span
+                .captures_iter(line)
+                .filter_map(|capture| capture.get(1).map(|matched| matched.as_str()))
+                .filter_map(|raw| {
+                    resolve_hit(
+                        context,
+                        raw,
+                        EdgeType::References,
+                        if is_table {
+                            ReferenceSourceKind::InstructionTableRef
+                        } else {
+                            ReferenceSourceKind::InstructionCodeSpanRef
+                        },
+                        if is_table {
+                            "instruction_table_ref"
+                        } else {
+                            "instruction_code_span"
+                        },
+                        if is_table {
+                            format!(
+                                "Instruction table reference found in {}.",
+                                context.base_display_path
+                            )
+                        } else {
+                            format!(
+                                "Instruction code-span reference found in {}.",
+                                context.base_display_path
+                            )
+                        },
+                        if is_table { 0.95 } else { 0.91 },
                         true,
                     )
                 })
@@ -518,7 +568,7 @@ mod tests {
         assert!(refs.iter().any(|hit| hit.source == "instruction_directive"));
         assert!(refs
             .iter()
-            .any(|hit| hit.source_kind == ReferenceSourceKind::InstructionImport));
+            .any(|hit| hit.source_kind == ReferenceSourceKind::InstructionDirective));
         assert!(refs
             .iter()
             .any(|hit| hit.resolved_path.ends_with("CLAUDE.md") && hit.promotes_effective));
@@ -548,6 +598,40 @@ mod tests {
         assert!(refs
             .iter()
             .any(|hit| hit.resolved_path.ends_with("TODOS.md")));
+    }
+
+    #[test]
+    fn extracts_instruction_table_refs_from_docs_map() {
+        let temp = TempDir::new().expect("tempdir");
+        let base = temp.path().join("CLAUDE.md");
+        fs::create_dir_all(temp.path().join("docs").join("CODEMAPS")).expect("docs dir");
+        fs::write(temp.path().join("docs").join("CONTRIB.md"), "ok").expect("contrib");
+        fs::write(
+            temp.path().join("docs").join("CODEMAPS").join("architecture.md"),
+            "ok",
+        )
+        .expect("architecture");
+
+        let refs = extract_references(
+            &ResolverContext {
+                base_file: &base,
+                base_display_path: "CLAUDE.md",
+                artifact_type: &ArtifactType::Instructions,
+                tool_family: "claude",
+                home_dir: Path::new("/Users/test"),
+            },
+            "| Need | Read |\n|---|---|\n| Conventions | `docs/CONTRIB.md` |\n| Architecture | `docs/CODEMAPS/architecture.md` |\n",
+        );
+
+        assert!(refs
+            .iter()
+            .any(|hit| hit.source_kind == ReferenceSourceKind::InstructionTableRef));
+        assert!(refs
+            .iter()
+            .any(|hit| hit.resolved_path.ends_with("docs/CONTRIB.md")));
+        assert!(refs
+            .iter()
+            .any(|hit| hit.resolved_path.ends_with("docs/CODEMAPS/architecture.md")));
     }
 
     #[test]

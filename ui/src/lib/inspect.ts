@@ -41,6 +41,7 @@ export type InspectTreeNode = {
   path?: string;
   children: InspectTreeNode[];
   states: string[];
+  usageState: "used" | "unused" | "broken";
   score: number;
 };
 
@@ -171,6 +172,7 @@ function compressTrie(node: TrieNode): InspectTreeNode {
     path: current.path,
     children,
     states: current.states,
+    usageState: usageStateForStates(current.states),
     score: scoreStates(current.states),
   };
 }
@@ -185,4 +187,14 @@ function scoreStates(states: string[]) {
   if (states.includes("referenced_only")) return 2;
   if (states.includes("shadowed")) return 3;
   return 4;
+}
+
+export function usageStateForStates(states: string[]): "used" | "unused" | "broken" {
+  if (states.includes("broken_reference") || states.includes("unresolved")) {
+    return "broken";
+  }
+  if (states.includes("effective") || states.includes("observed")) {
+    return "used";
+  }
+  return "unused";
 }

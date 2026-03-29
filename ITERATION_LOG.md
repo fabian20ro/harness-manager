@@ -7,6 +7,16 @@
 
 ---
 
+### [2026-03-29] Inspect write mode + stronger refs + real plugin discovery
+
+**Context:** close inspect gaps: `CLAUDE.md` docs-map refs, tree usage signal, actual local plugin installs, local edit/save/revert flow
+**Happened:** upgraded instruction-doc resolver for directives/tables/code spans; added recursive effective promotion coverage; replaced catalog-only plugin lookup with Codex cache/tmp and Claude installed-index/marketplace discovery; added inspect edit API and UI with save/conflict/revert; added tree used/unused/broken indicators; added backend/frontend regression tests
+**Outcome:** success
+**Insight:** docs-as-instructions need their own strong-ref parser; plugin docs often lag real install layouts, so local indexes/layout heuristics must outrank seed catalogs
+**Promoted:** no
+
+---
+
 ### [2026-03-28] AI agent config setup
 
 **Context:** bootstrap repo memory hierarchy and sub-agent files from setup guide
