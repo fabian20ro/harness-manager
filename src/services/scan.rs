@@ -47,7 +47,21 @@ struct PluginCandidate {
     manifest_base_dir: Option<PathBuf>,
     readme_path: Option<PathBuf>,
     discovery_sources: Vec<String>,
-    disabled: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct PluginDiscoveryCacheKey {
+    system: String,
+    roots: Vec<(PathBuf, String)>,
+    manifest_paths: Vec<String>,
+    max_depth: usize,
+}
+
+#[derive(Default)]
+struct ScanRunContext {
+    plugin_discovery_cache: HashMap<PluginDiscoveryCacheKey, Vec<PluginCandidate>>,
+    #[cfg(test)]
+    plugin_discovery_call_counts: HashMap<String, usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -150,6 +164,7 @@ where
 {
     store.ensure_layout()?;
     let catalogs = load_catalogs(store)?;
+    let mut scan_run = ScanRunContext::default();
     let roots = roots
         .unwrap_or_else(|| {
             config
@@ -186,6 +201,7 @@ where
             store,
             &catalogs,
             candidate,
+            &mut scan_run,
             index + 1,
             total_projects,
             &mut on_progress,
@@ -216,7 +232,16 @@ pub fn rebuild_surface_state(
     let inventory = store.read_json::<Vec<String>>(&store.inventory_path(project_id))?;
     let catalogs = load_catalogs(store)?;
     let catalog = catalogs.get(tool).context("tool catalog not found")?;
-    let state = build_surface_state(config, store, &project, catalog, &inventory)?;
+    let mut scan_run = ScanRunContext::default();
+    let state = build_surface_state_with_context(
+        config,
+        store,
+        &project,
+        catalog,
+        &inventory,
+        &mut scan_run,
+        &mut |_| Ok(()),
+    )?;
     store.write_json(&store.tool_state_path(project_id, tool), &state)?;
     Ok(state)
 }
@@ -232,6 +257,7 @@ where
     F: FnMut(ScanProgress) -> Result<()>,
 {
     store.ensure_layout()?;
+    let mut scan_run = ScanRunContext::default();
     let mut projects = store
         .maybe_read_json::<Vec<ProjectSummary>>(&store.projects_index_path())?
         .unwrap_or_default();
@@ -283,7 +309,15 @@ where
         items_done: Some(1),
         items_total: Some(1),
     })?;
-    let state = build_surface_state(config, store, &updated_project, catalog, &inventory)?;
+    let state = build_surface_state_with_context(
+        config,
+        store,
+        &updated_project,
+        catalog,
+        &inventory,
+        &mut scan_run,
+        &mut on_progress,
+    )?;
     store.write_json(&store.tool_state_path(project_id, tool), &state)?;
 
     projects[project_index] = updated_project;
@@ -298,6 +332,7 @@ fn scan_project(
     store: &Store,
     catalogs: &HashMap<String, ToolCatalog>,
     candidate: &ProjectCandidate,
+    scan_run: &mut ScanRunContext,
     repo_index: usize,
     total_repos: usize,
     on_progress: &mut dyn FnMut(ScanProgress) -> Result<()>,
@@ -350,7 +385,15 @@ fn scan_project(
             items_done: Some(surface_index + 1),
             items_total: Some(total_surfaces),
         })?;
-        let state = build_surface_state(config, store, &summary, catalog, &inventory)?;
+        let state = build_surface_state_with_context(
+            config,
+            store,
+            &summary,
+            catalog,
+            &inventory,
+            scan_run,
+            on_progress,
+        )?;
         for node in &state.nodes {
             union_nodes.insert(node.id().to_string(), node.clone());
         }
@@ -371,12 +414,34 @@ fn scan_project(
     Ok(summary)
 }
 
+#[cfg(test)]
 fn build_surface_state(
     config: &AppConfig,
     store: &Store,
     project: &ProjectSummary,
     catalog: &ToolCatalog,
     inventory: &[String],
+) -> Result<SurfaceState> {
+    let mut scan_run = ScanRunContext::default();
+    build_surface_state_with_context(
+        config,
+        store,
+        project,
+        catalog,
+        inventory,
+        &mut scan_run,
+        &mut |_| Ok(()),
+    )
+}
+
+fn build_surface_state_with_context(
+    config: &AppConfig,
+    store: &Store,
+    project: &ProjectSummary,
+    catalog: &ToolCatalog,
+    inventory: &[String],
+    scan_run: &mut ScanRunContext,
+    on_progress: &mut dyn FnMut(ScanProgress) -> Result<()>,
 ) -> Result<SurfaceState> {
     let mut nodes = BTreeMap::<String, GraphNode>::new();
     let mut edges = Vec::<GraphEdge>::new();
@@ -496,7 +561,10 @@ fn build_surface_state(
             plugin_system,
             &tool_node,
             &repo_root,
+            &project.display_path,
             indexed_at,
+            scan_run,
+            on_progress,
         )?;
         for node in plugin_nodes {
             nodes.insert(node.id().to_string(), node);
@@ -659,7 +727,10 @@ fn collect_plugins(
     plugin_system: &crate::domain::PluginSystemCatalog,
     tool_node: &GraphNode,
     repo_root: &Path,
+    repo_display_path: &str,
     _indexed_at: DateTime<Utc>,
+    scan_run: &mut ScanRunContext,
+    on_progress: &mut dyn FnMut(ScanProgress) -> Result<()>,
 ) -> Result<(Vec<GraphNode>, Vec<GraphEdge>, Vec<Verdict>)> {
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
@@ -669,10 +740,18 @@ fn collect_plugins(
         .iter()
         .map(|path| resolve_catalog_path(path, &config.home_dir, Some(repo_root)))
         .collect::<Vec<_>>();
-    let candidates = discover_plugins(config, plugin_system, repo_root, &config_paths)?;
+    let candidates = discover_plugins_with_cache(
+        scan_run,
+        config,
+        plugin_system,
+        repo_root,
+        repo_display_path,
+        on_progress,
+    )?;
     for candidate in candidates {
+        let disabled = plugin_disabled(&candidate.name, &config_paths);
         let mut states = vec![NodeState::Installed, NodeState::Configured];
-        let reason = if candidate.disabled {
+        let reason = if disabled {
             states.push(NodeState::Inactive);
             format!(
                 "Plugin discovered via {} but disabled in config.",
@@ -698,7 +777,7 @@ fn collect_plugins(
                 .map(|path| path.to_string_lossy().to_string()),
             discovery_sources: candidate.discovery_sources.clone(),
             states: states.clone(),
-            confidence: if candidate.disabled { 0.88 } else { 0.94 },
+            confidence: if disabled { 0.88 } else { 0.94 },
             reason: reason.clone(),
         });
         verdicts.push(node_verdict(&plugin_id, &states, &reason));
@@ -712,13 +791,13 @@ fn collect_plugins(
         edges.push(GraphEdge {
             from: plugin_id.clone(),
             to: tool_node.id().to_string(),
-            edge_type: if candidate.disabled {
+            edge_type: if disabled {
                 EdgeType::Disables
             } else {
                 EdgeType::Enables
             },
             hardness: "hard".to_string(),
-            reason: if candidate.disabled {
+            reason: if disabled {
                 "Config explicitly disables plugin.".to_string()
             } else {
                 "Config leaves plugin enabled.".to_string()
@@ -766,7 +845,7 @@ fn collect_plugins(
                     manifest,
                     &candidate.install_root,
                     &plugin_id,
-                    candidate.disabled,
+                    disabled,
                     &config.home_dir,
                 )? {
                     let skill_id = skill_artifact.id.clone();
@@ -813,28 +892,69 @@ fn collect_plugins(
     Ok((nodes, edges, verdicts))
 }
 
-fn discover_plugins(
+fn discover_plugins_with_cache(
+    scan_run: &mut ScanRunContext,
     config: &AppConfig,
     plugin_system: &crate::domain::PluginSystemCatalog,
     repo_root: &Path,
-    config_paths: &[PathBuf],
+    repo_display_path: &str,
+    on_progress: &mut dyn FnMut(ScanProgress) -> Result<()>,
 ) -> Result<Vec<PluginCandidate>> {
-    let mut candidates = HashMap::<String, PluginCandidate>::new();
+    let (roots, max_depth) = plugin_discovery_roots(config, plugin_system, repo_root);
+    let cache_key = PluginDiscoveryCacheKey {
+        system: plugin_system.system.clone(),
+        roots: roots
+            .iter()
+            .map(|(path, source)| (path.clone(), (*source).to_string()))
+            .collect(),
+        manifest_paths: plugin_system.manifest_paths.clone(),
+        max_depth,
+    };
+    let system_name = plugin_system_display_name(&plugin_system.system);
+
+    if let Some(cached) = scan_run.plugin_discovery_cache.get(&cache_key) {
+        on_progress(ScanProgress {
+            phase: "surface".to_string(),
+            message: format!("Reusing cached {system_name} plugin discovery for {repo_display_path}"),
+            current_path: Some(repo_display_path.to_string()),
+            items_done: None,
+            items_total: None,
+        })?;
+        return Ok(cached.clone());
+    }
+
+    on_progress(ScanProgress {
+        phase: "surface".to_string(),
+        message: format!("Discovering {system_name} plugins for {repo_display_path}"),
+        current_path: Some(repo_display_path.to_string()),
+        items_done: None,
+        items_total: None,
+    })?;
+    let candidates = discover_plugins_from_roots(&roots, &plugin_system.manifest_paths, max_depth)?;
+    #[cfg(test)]
+    {
+        *scan_run
+            .plugin_discovery_call_counts
+            .entry(plugin_system.system.clone())
+            .or_insert(0) += 1;
+    }
+    scan_run
+        .plugin_discovery_cache
+        .insert(cache_key, candidates.clone());
+    Ok(candidates)
+}
+
+fn plugin_discovery_roots(
+    config: &AppConfig,
+    plugin_system: &crate::domain::PluginSystemCatalog,
+    repo_root: &Path,
+) -> (Vec<(PathBuf, &'static str)>, usize) {
     let mut roots = plugin_system
         .install_roots
         .iter()
         .map(|path| resolve_catalog_path(path, &config.home_dir, Some(repo_root)))
         .map(|path| (path, "install_root"))
         .collect::<Vec<_>>();
-
-    for candidate in discover_plugin_candidates(
-        &roots,
-        &plugin_system.manifest_paths,
-        config.scan_max_depth + 4,
-        config_paths,
-    ) {
-        merge_plugin_candidate(&mut candidates, candidate);
-    }
 
     match plugin_system.system.as_str() {
         "codex" => {
@@ -847,14 +967,6 @@ fn discover_plugins(
                     .join("plugins"),
                 "cache_layout",
             ));
-            for candidate in discover_plugin_candidates(
-                &roots,
-                &plugin_system.manifest_paths,
-                config.scan_max_depth + 4,
-                config_paths,
-            ) {
-                merge_plugin_candidate(&mut candidates, candidate);
-            }
         }
         "claude" => {
             let installed_path = config
@@ -866,14 +978,7 @@ fn discover_plugins(
                 .into_iter()
                 .map(|path| (path, "install_index"))
                 .collect::<Vec<_>>();
-            for candidate in discover_plugin_candidates(
-                &installed_roots,
-                &plugin_system.manifest_paths,
-                config.scan_max_depth + 4,
-                config_paths,
-            ) {
-                merge_plugin_candidate(&mut candidates, candidate);
-            }
+            roots.extend(installed_roots);
             roots.push((
                 config.home_dir.join(".claude").join("plugins").join("marketplaces"),
                 "marketplace_layout",
@@ -882,16 +987,24 @@ fn discover_plugins(
                 config.home_dir.join(".claude").join("plugins").join("cache"),
                 "cache_layout",
             ));
-            for candidate in discover_plugin_candidates(
-                &roots,
-                &plugin_system.manifest_paths,
-                config.scan_max_depth + 5,
-                config_paths,
-            ) {
-                merge_plugin_candidate(&mut candidates, candidate);
-            }
         }
         _ => {}
+    }
+    let max_depth = match plugin_system.system.as_str() {
+        "claude" => config.scan_max_depth + 5,
+        _ => config.scan_max_depth + 4,
+    };
+    (roots, max_depth)
+}
+
+fn discover_plugins_from_roots(
+    roots: &[(PathBuf, &'static str)],
+    manifest_paths: &[String],
+    max_depth: usize,
+) -> Result<Vec<PluginCandidate>> {
+    let mut candidates = HashMap::<String, PluginCandidate>::new();
+    for candidate in discover_plugin_candidates(roots, manifest_paths, max_depth) {
+        merge_plugin_candidate(&mut candidates, candidate);
     }
     let mut values = candidates.into_values().collect::<Vec<_>>();
     values.sort_by(|left, right| left.name.cmp(&right.name));
@@ -902,7 +1015,6 @@ fn discover_plugin_candidates(
     roots: &[(PathBuf, &str)],
     manifest_paths: &[String],
     max_depth: usize,
-    config_paths: &[PathBuf],
 ) -> Vec<PluginCandidate> {
     let manifest_paths = manifest_paths
         .iter()
@@ -929,12 +1041,17 @@ fn discover_plugin_candidates(
                             &plugin_root,
                             entry.path(),
                             discovery_source,
-                            config_paths,
                         );
-                        discovered.insert(
-                            (candidate.install_root.clone(), entry.path().to_path_buf()),
-                            candidate,
-                        );
+                        let key = (candidate.install_root.clone(), entry.path().to_path_buf());
+                        if let Some(existing) = discovered.get_mut(&key) {
+                            for source in candidate.discovery_sources {
+                                if !existing.discovery_sources.contains(&source) {
+                                    existing.discovery_sources.push(source);
+                                }
+                            }
+                        } else {
+                            discovered.insert(key, candidate);
+                        }
                     }
                 }
             }
@@ -962,7 +1079,6 @@ fn plugin_candidate(
     plugin_root: &Path,
     manifest_path: &Path,
     discovery_source: &str,
-    config_paths: &[PathBuf],
 ) -> PluginCandidate {
     let plugin_name = manifest_path
         .exists()
@@ -984,7 +1100,6 @@ fn plugin_candidate(
         manifest_base_dir: manifest_path.parent().map(Path::to_path_buf),
         readme_path: plugin_root.join("README.md").exists().then(|| plugin_root.join("README.md")),
         discovery_sources: vec![discovery_source.to_string()],
-        disabled: plugin_disabled(&plugin_name, config_paths),
     }
 }
 
@@ -1006,7 +1121,6 @@ fn merge_plugin_candidate(
         if candidate.install_root.to_string_lossy().len() < existing.install_root.to_string_lossy().len() {
             existing.install_root = candidate.install_root.clone();
         }
-        existing.disabled = existing.disabled || candidate.disabled;
         for source in candidate.discovery_sources {
             if !existing.discovery_sources.contains(&source) {
                 existing.discovery_sources.push(source);
@@ -2104,6 +2218,14 @@ fn display_path(path: &Path, home_dir: &Path) -> String {
     }
 }
 
+fn plugin_system_display_name(system: &str) -> &str {
+    match system {
+        "codex" => "Codex",
+        "claude" => "Claude",
+        _ => system,
+    }
+}
+
 #[cfg(test)]
 pub(crate) fn build_surface_state_for_test(
     config: &AppConfig,
@@ -2243,8 +2365,9 @@ mod tests {
     };
 
     use super::{
-        build_surface_state, collect_repo_files, display_path, reindex_project_tool_with_progress,
-        scan_projects, scan_projects_with_progress, stable_id, EdgeType,
+        build_surface_state, build_surface_state_with_context, collect_repo_files, display_path,
+        reindex_project_tool_with_progress, scan_projects, scan_projects_with_progress,
+        stable_id, EdgeType, ScanRunContext,
     };
 
     fn demo_project_summary(root: &std::path::Path, home: &std::path::Path) -> ProjectSummary {
@@ -2597,6 +2720,199 @@ mod tests {
             node,
             GraphNode::Artifact(artifact) if artifact.path.ends_with("docs/policy.md")
         )));
+    }
+
+    #[test]
+    fn codex_plugin_discovery_is_memoized_across_projects_and_keeps_project_local_enablement() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let repo_one = home.join("git").join("demo-one");
+        let repo_two = home.join("git").join("demo-two");
+        fs::create_dir_all(repo_one.join(".git")).expect("git dir");
+        fs::create_dir_all(repo_two.join(".git")).expect("git dir");
+        fs::create_dir_all(repo_one.join(".codex")).expect("codex dir");
+        fs::create_dir_all(
+            home.join(".codex")
+                .join("plugins")
+                .join("gmail")
+                .join(".codex-plugin"),
+        )
+        .expect("plugin dir");
+        fs::write(
+            home.join(".codex")
+                .join("plugins")
+                .join("gmail")
+                .join(".codex-plugin")
+                .join("plugin.json"),
+            r#"{"name":"gmail"}"#,
+        )
+        .expect("manifest");
+        fs::write(
+            repo_one.join(".codex").join("config.toml"),
+            "[plugins.gmail]\nenabled = false\n",
+        )
+        .expect("repo config");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".codex")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        let catalogs = seed_catalog_map().expect("catalogs");
+        let inventory_one = collect_repo_files(&repo_one, 5);
+        let inventory_two = collect_repo_files(&repo_two, 5);
+        let mut scan_run = ScanRunContext::default();
+        let mut progress = Vec::new();
+
+        let state_one = build_surface_state_with_context(
+            &config,
+            &store,
+            &demo_project_summary(&repo_one, &home),
+            &catalogs["codex"],
+            &inventory_one,
+            &mut scan_run,
+            &mut |update| {
+                progress.push(update);
+                Ok(())
+            },
+        )
+        .expect("state one");
+        let state_two = build_surface_state_with_context(
+            &config,
+            &store,
+            &demo_project_summary(&repo_two, &home),
+            &catalogs["codex"],
+            &inventory_two,
+            &mut scan_run,
+            &mut |update| {
+                progress.push(update);
+                Ok(())
+            },
+        )
+        .expect("state two");
+
+        assert_eq!(scan_run.plugin_discovery_call_counts.get("codex"), Some(&1));
+        assert!(progress.iter().any(|update| {
+            update
+                .message
+                .contains("Discovering Codex plugins for ~/git/demo-one")
+        }));
+        assert!(progress.iter().any(|update| {
+            update
+                .message
+                .contains("Reusing cached Codex plugin discovery for ~/git/demo-two")
+        }));
+
+        let plugin_one = state_one
+            .nodes
+            .iter()
+            .find_map(|node| match node {
+                GraphNode::Plugin(plugin) if plugin.name == "gmail" => Some(plugin),
+                _ => None,
+            })
+            .expect("plugin one");
+        let plugin_two = state_two
+            .nodes
+            .iter()
+            .find_map(|node| match node {
+                GraphNode::Plugin(plugin) if plugin.name == "gmail" => Some(plugin),
+                _ => None,
+            })
+            .expect("plugin two");
+
+        assert!(plugin_one.states.contains(&NodeState::Inactive));
+        assert!(plugin_two.states.contains(&NodeState::Effective));
+    }
+
+    #[test]
+    fn claude_plugin_discovery_is_memoized_across_surfaces_in_one_run() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let repo = home.join("git").join("demo");
+        fs::create_dir_all(repo.join(".git")).expect("git dir");
+        let install_root = home
+            .join(".claude")
+            .join("plugins")
+            .join("cache")
+            .join("claude-plugins-official")
+            .join("github")
+            .join("1.0.0");
+        fs::create_dir_all(install_root.join(".claude-plugin")).expect("plugin dir");
+        fs::write(
+            install_root.join(".claude-plugin").join("plugin.json"),
+            r#"{"name":"github"}"#,
+        )
+        .expect("manifest");
+        fs::create_dir_all(home.join(".claude").join("plugins")).expect("plugins dir");
+        fs::write(
+            home.join(".claude").join("plugins").join("installed_plugins.json"),
+            format!(
+                r#"{{"version":2,"plugins":{{"github@claude-plugins-official":[{{"installPath":"{}"}}]}}}}"#,
+                install_root.display()
+            ),
+        )
+        .expect("installed index");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".claude")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        let catalogs = seed_catalog_map().expect("catalogs");
+        let inventory = collect_repo_files(&repo, 5);
+        let mut scan_run = ScanRunContext::default();
+        let mut progress = Vec::new();
+
+        build_surface_state_with_context(
+            &config,
+            &store,
+            &demo_project_summary(&repo, &home),
+            &catalogs["claude_code"],
+            &inventory,
+            &mut scan_run,
+            &mut |update| {
+                progress.push(update);
+                Ok(())
+            },
+        )
+        .expect("claude code state");
+        build_surface_state_with_context(
+            &config,
+            &store,
+            &demo_project_summary(&repo, &home),
+            &catalogs["claude_cowork"],
+            &inventory,
+            &mut scan_run,
+            &mut |update| {
+                progress.push(update);
+                Ok(())
+            },
+        )
+        .expect("claude cowork state");
+
+        assert_eq!(scan_run.plugin_discovery_call_counts.get("claude"), Some(&1));
+        assert!(progress.iter().any(|update| {
+            update
+                .message
+                .contains("Discovering Claude plugins for ~/git/demo")
+        }));
+        assert!(progress.iter().any(|update| {
+            update
+                .message
+                .contains("Reusing cached Claude plugin discovery for ~/git/demo")
+        }));
     }
 
     #[test]

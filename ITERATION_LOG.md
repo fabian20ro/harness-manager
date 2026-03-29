@@ -7,6 +7,16 @@
 
 ---
 
+### [2026-03-30] Memoized plugin discovery for global reindex
+
+**Context:** global reindex could appear frozen on `Evaluating Codex ...` because plugin-enabled surfaces re-walked large global Codex/Claude plugin trees inside every `build_surface_state()` call, repeating expensive filesystem discovery for each project/surface
+**Happened:** added run-scoped `ScanRunContext` in the scanner; split expensive plugin candidate discovery from per-project enable/disable evaluation; memoized plugin discovery by plugin system + resolved discovery roots + manifest paths + scan depth; threaded the shared run context through full scan, scoped reindex, and surface builds; emitted explicit `Discovering ... plugins` vs `Reusing cached ... plugin discovery` progress messages; preserved per-project config semantics by computing disabled/effective state after cache lookup; added regressions for Codex cross-project reuse with project-local enablement differences and Claude cross-surface reuse; verified `cargo test`
+**Outcome:** success
+**Insight:** cache only the expensive physical discovery layer; keep effective-state evaluation outside the cache when local config can change behavior per project, otherwise reuse either becomes incorrect or too narrowly keyed to help performance
+**Promoted:** no
+
+---
+
 ### [2026-03-30] Async scan jobs restore live reindex progress
 
 **Context:** scoped reindex progress stopped updating because scan/reindex endpoints ran full filesystem work inline in the request handler, so the helper could stop servicing `/api/events` promptly while work was in flight
