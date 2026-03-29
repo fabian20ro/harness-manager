@@ -1,5 +1,5 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
 
@@ -36,6 +36,10 @@ describe("App", () => {
       },
       configurable: true,
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("renders helper copy control in the toolbar, not the sidebar", async () => {
@@ -295,6 +299,210 @@ describe("App", () => {
     });
 
     expect(screen.getByRole("button", { name: "Reindexing..." })).toBeDisabled();
+  });
+
+  it("polls job status after starting scoped reindex and refreshes graph on completion", async () => {
+    let graphCalls = 0;
+    let jobCalls = 0;
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/api/projects")) {
+        return {
+          ok: true,
+          json: async () => [
+            {
+              id: "p1",
+              root_path: "/tmp/demo",
+              display_path: "~/git/demo",
+              name: "demo",
+              indexed_at: "2026-03-29T10:00:00Z",
+              status: "ready",
+            },
+          ],
+        } as Response;
+      }
+      if (url.includes("/api/projects/p1/graph?tool=codex")) {
+        graphCalls += 1;
+        return {
+          ok: true,
+          json: async () => ({
+            project: {
+              id: "p1",
+              root_path: "/tmp/demo",
+              display_path: "~/git/demo",
+              name: "demo",
+              indexed_at: "2026-03-29T10:00:00Z",
+              status: "ready",
+            },
+            tool: {
+              id: "codex",
+              display_name: "Codex",
+              support_level: "full",
+            },
+            nodes: [{ id: "tool:codex", kind: "tool_context" }],
+            edges: [],
+            verdicts: [],
+          }),
+        } as Response;
+      }
+      if (url.includes("/api/projects/p1/reindex")) {
+        return {
+          ok: true,
+          json: async () => ({
+            id: "job-9",
+            kind: "scan",
+            scope_kind: "project_tool",
+            project_id: "p1",
+            tool: "codex",
+            status: "running",
+            created_at: "2026-03-29T10:00:00Z",
+            finished_at: null,
+            message: "Reindexing codex.",
+          }),
+        } as Response;
+      }
+      if (url.includes("/api/jobs/job-9")) {
+        jobCalls += 1;
+        return {
+          ok: true,
+          json: async () =>
+            jobCalls >= 2
+              ? {
+                  id: "job-9",
+                  kind: "scan",
+                  scope_kind: "project_tool",
+                  project_id: "p1",
+                  tool: "codex",
+                  status: "completed",
+                  created_at: "2026-03-29T10:00:00Z",
+                  finished_at: "2026-03-29T10:00:02Z",
+                  message: "Reindexed Codex for ~/git/demo.",
+                }
+              : {
+                  id: "job-9",
+                  kind: "scan",
+                  scope_kind: "project_tool",
+                  project_id: "p1",
+                  tool: "codex",
+                  status: "running",
+                  created_at: "2026-03-29T10:00:00Z",
+                  finished_at: null,
+                  message: "Scanning ~/git/demo",
+                },
+        } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          entity: { id: "tool:codex", kind: "tool_context" },
+          verdict: { states: [], why_included: [], why_excluded: [], shadowed_by: [] },
+          incoming_edges: [],
+          outgoing_edges: [],
+          related_activity: [],
+          viewer_content: "",
+          edit: { editable: false, last_saved_backup_available: false },
+        }),
+      } as Response;
+    });
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "Project" })).toHaveValue("p1"),
+    );
+    expect(graphCalls).toBe(1);
+
+    await act(async () => {
+      screen.getByRole("button", { name: "Reindex current" }).click();
+    });
+
+    expect(screen.getByRole("button", { name: "Reindexing..." })).toBeDisabled();
+
+    await waitFor(() => expect(jobCalls).toBeGreaterThanOrEqual(2), { timeout: 3000 });
+    await waitFor(() => expect(graphCalls).toBe(2), { timeout: 3000 });
+  });
+
+  it("shows conflict text when a scan job is already running", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/api/projects")) {
+        return {
+          ok: true,
+          json: async () => [
+            {
+              id: "p1",
+              root_path: "/tmp/demo",
+              display_path: "~/git/demo",
+              name: "demo",
+              indexed_at: "2026-03-29T10:00:00Z",
+              status: "ready",
+            },
+          ],
+        } as Response;
+      }
+      if (url.includes("/api/projects/p1/graph?tool=codex")) {
+        return {
+          ok: true,
+          json: async () => ({
+            project: {
+              id: "p1",
+              root_path: "/tmp/demo",
+              display_path: "~/git/demo",
+              name: "demo",
+              indexed_at: "2026-03-29T10:00:00Z",
+              status: "ready",
+            },
+            tool: {
+              id: "codex",
+              display_name: "Codex",
+              support_level: "full",
+            },
+            nodes: [{ id: "tool:codex", kind: "tool_context" }],
+            edges: [],
+            verdicts: [],
+          }),
+        } as Response;
+      }
+      if (url.includes("/api/projects/p1/reindex")) {
+        return {
+          ok: false,
+          status: 409,
+          json: async () => ({
+            error: "Another scan or reindex job is already running.",
+          }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          entity: { id: "tool:codex", kind: "tool_context" },
+          verdict: { states: [], why_included: [], why_excluded: [], shadowed_by: [] },
+          incoming_edges: [],
+          outgoing_edges: [],
+          related_activity: [],
+          viewer_content: "",
+          edit: { editable: false, last_saved_backup_available: false },
+        }),
+      } as Response;
+    });
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "Project" })).toHaveValue("p1"),
+    );
+
+    await act(async () => {
+      screen.getByRole("button", { name: "Reindex current" }).click();
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("Error: Another scan or reindex job is already running."),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("button", { name: "Reindex current" })).toBeEnabled();
   });
 
   it("starts with the tree expanded and keeps selection after collapsing an ancestor", async () => {

@@ -7,6 +7,16 @@
 
 ---
 
+### [2026-03-30] Async scan jobs restore live reindex progress
+
+**Context:** scoped reindex progress stopped updating because scan/reindex endpoints ran full filesystem work inline in the request handler, so the helper could stop servicing `/api/events` promptly while work was in flight
+**Happened:** moved `POST /api/scan` and `POST /api/projects/:id/reindex` to immediate-return job starts backed by spawned background work plus `spawn_blocking`; kept progress emission through `JobRegistry.update()` / SSE; added a running-scan conflict guard so only one scan-family job can run at a time; changed completion to finish from the latest stored job state instead of the stale initial copy; updated the React controller to treat start responses as running jobs, stop eager graph/project reloads, poll `/api/jobs/:id` as fallback when SSE is quiet, and surface `409` errors inline; added backend/UI regressions and verified `cargo test`, `npm test -- --run`, `npm run build`
+**Outcome:** success
+**Insight:** job progress and terminal status must be derived from the latest persisted job snapshot, not the handler’s initial clone; otherwise background progress and final state race each other and UI behavior becomes brittle
+**Promoted:** no
+
+---
+
 ### [2026-03-29] Catalog-driven project discovery signals
 
 **Context:** project discovery had already expanded beyond `.git`, but the non-git rules still lived in Rust heuristics, so adding Codex/Copilot/Antigravity package/workspace signals from docs would keep forcing scanner code edits and cross-surface bugs

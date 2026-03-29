@@ -69,6 +69,11 @@ function formatInspectFailureMessage(
   return `Inspect failed for ${nodeLabel}: ${detail}`;
 }
 
+async function parseApiError(response: Response, fallback: string) {
+  const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+  return payload?.error?.trim() || fallback;
+}
+
 export function useInspectController() {
   const [activeTab, setActiveTab] = useState<AppTab>(
     () => loadStored(`${STORAGE_PREFIX}.activeTab`, "Projects") as AppTab,
@@ -97,7 +102,34 @@ export function useInspectController() {
   const [isStartingGlobalScan, setIsStartingGlobalScan] = useState(false);
   const [isStartingScopedReindex, setIsStartingScopedReindex] = useState(false);
   const clearScanJobTimer = useRef<number | null>(null);
+  const scanJobPollTimer = useRef<number | null>(null);
   const lastAutoExpandedSelection = useRef("");
+
+  function stopScanJobPolling() {
+    if (scanJobPollTimer.current) {
+      window.clearInterval(scanJobPollTimer.current);
+      scanJobPollTimer.current = null;
+    }
+  }
+
+  function startScanJobPolling(jobId: string) {
+    stopScanJobPolling();
+    scanJobPollTimer.current = window.setInterval(async () => {
+      try {
+        const response = await fetch(apiUrl(apiBase, `/api/jobs/${jobId}`));
+        if (!response.ok) {
+          return;
+        }
+        const payload = (await response.json()) as JobStatus;
+        setScanJob((current) => (current?.id === jobId || !current ? payload : current));
+        if (payload.status !== "running") {
+          stopScanJobPolling();
+        }
+      } catch {
+        // Keep SSE as the primary channel. Polling is fallback-only.
+      }
+    }, 750);
+  }
 
   async function loadProjects() {
     const response = await fetch(apiUrl(apiBase, "/api/projects"));
@@ -139,11 +171,11 @@ export function useInspectController() {
         body: JSON.stringify({}),
       });
       if (!response.ok) {
-        throw new Error(`Scan failed: ${response.status}`);
+        throw new Error(await parseApiError(response, `Scan failed: ${response.status}`));
       }
       const payload = (await response.json()) as JobStatus;
       setScanJob(payload);
-      await loadProjects();
+      startScanJobPolling(payload.id);
     } catch (error) {
       setStatusMessage(String(error));
       throw error;
@@ -162,11 +194,13 @@ export function useInspectController() {
         body: JSON.stringify({ tool: selectedTool }),
       });
       if (!response.ok) {
-        throw new Error(`Scoped reindex failed: ${response.status}`);
+        throw new Error(
+          await parseApiError(response, `Scoped reindex failed: ${response.status}`),
+        );
       }
       const payload = (await response.json()) as JobStatus;
       setScanJob(payload);
-      await refreshGraph(selectedProject, selectedTool);
+      startScanJobPolling(payload.id);
     } catch (error) {
       setStatusMessage(String(error));
       throw error;
@@ -285,6 +319,9 @@ export function useInspectController() {
       const job = JSON.parse(event.data) as JobStatus;
       if (job.kind === "scan") {
         setScanJob(job);
+        if (job.status !== "running") {
+          stopScanJobPolling();
+        }
         if (clearScanJobTimer.current) {
           window.clearTimeout(clearScanJobTimer.current);
           clearScanJobTimer.current = null;
@@ -306,6 +343,7 @@ export function useInspectController() {
 
     return () => {
       source.close();
+      stopScanJobPolling();
       if (clearScanJobTimer.current) {
         window.clearTimeout(clearScanJobTimer.current);
         clearScanJobTimer.current = null;
@@ -365,6 +403,7 @@ export function useInspectController() {
     if (!scanJob || scanJob.status === "running") {
       return;
     }
+    stopScanJobPolling();
     if (scanJob.scope_kind === "global") {
       loadProjects().catch((error) => setStatusMessage(String(error)));
       return;

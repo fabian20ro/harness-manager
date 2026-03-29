@@ -141,6 +141,15 @@ impl JobRegistry {
         }
         self.store.maybe_read_json(&self.store.job_path(job_id))
     }
+
+    pub fn find_running_kind(&self, kind: &str) -> Option<JobStatus> {
+        self.jobs
+            .lock()
+            .expect("job registry poisoned")
+            .values()
+            .find(|job| job.kind == kind && job.status == "running")
+            .cloned()
+    }
 }
 
 #[cfg(test)]
@@ -179,5 +188,22 @@ mod tests {
         assert_eq!(updated.current_path.as_deref(), Some("~/git/demo"));
         assert_eq!(updated.items_done, Some(1));
         assert_eq!(updated.items_total, Some(3));
+    }
+
+    #[test]
+    fn find_running_kind_returns_only_running_jobs() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let scan_job = registry.create("scan", "Scanning projects.").expect("scan job");
+        let other_job = registry
+            .create("refresh-activity", "Refreshing activity.")
+            .expect("other job");
+        registry
+            .finish(other_job, "completed", "Done.")
+            .expect("finish other job");
+
+        let found = registry.find_running_kind("scan").expect("running scan");
+        assert_eq!(found.id, scan_job.id);
+        assert!(registry.find_running_kind("refresh-activity").is_none());
     }
 }

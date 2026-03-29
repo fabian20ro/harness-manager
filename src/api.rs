@@ -137,24 +137,17 @@ async fn post_scan(
     State(state): State<AppState>,
     Json(body): Json<Option<ScanBody>>,
 ) -> ApiResult<Json<JobStatus>> {
+    ensure_no_running_scan_job(&state.jobs)?;
     let job = state
         .jobs
         .create_scoped("scan", "Scanning projects.", Some("global"), None, None)?;
-    let mut emitter = ScanProgressEmitter::new(state.jobs.clone(), job.clone());
-    let result = scan_projects_with_progress(
-        &state.config,
-        &state.store,
-        body.and_then(|body| body.roots),
-        |progress| emitter.emit(progress),
+    spawn_scan_job(
+        state.jobs.clone(),
+        state.config.clone(),
+        state.store.clone(),
+        job.clone(),
+        body.and_then(|payload| payload.roots),
     );
-    let job = match result {
-        Ok(projects) => state.jobs.finish(
-            job,
-            "completed",
-            &format!("Indexed {} project(s).", projects.len()),
-        )?,
-        Err(error) => state.jobs.finish(job, "failed", &error.to_string())?,
-    };
     Ok(Json(job))
 }
 
@@ -168,6 +161,7 @@ async fn post_project_reindex(
     Path(project_id): Path<String>,
     Json(body): Json<ProjectReindexBody>,
 ) -> ApiResult<Json<JobStatus>> {
+    ensure_no_running_scan_job(&state.jobs)?;
     let job = state.jobs.create_scoped(
         "scan",
         &format!("Reindexing {}.", body.tool),
@@ -175,26 +169,122 @@ async fn post_project_reindex(
         Some(&project_id),
         Some(&body.tool),
     )?;
-    let mut emitter = ScanProgressEmitter::new(state.jobs.clone(), job.clone());
-    let result = reindex_project_tool_with_progress(
-        &state.config,
-        &state.store,
-        &project_id,
-        &body.tool,
-        |progress| emitter.emit(progress),
+    spawn_project_reindex_job(
+        state.jobs.clone(),
+        state.config.clone(),
+        state.store.clone(),
+        job.clone(),
+        project_id,
+        body.tool,
     );
-    let job = match result {
-        Ok(surface) => state.jobs.finish(
-            job,
-            "completed",
-            &format!(
-                "Reindexed {} for {}.",
-                surface.tool.display_name, surface.project.display_path
-            ),
-        )?,
-        Err(error) => state.jobs.finish(job, "failed", &error.to_string())?,
-    };
     Ok(Json(job))
+}
+
+fn ensure_no_running_scan_job(jobs: &JobRegistry) -> ApiResult<()> {
+    if jobs.find_running_kind("scan").is_some() {
+        return Err(ApiError::conflict("Another scan or reindex job is already running."));
+    }
+    Ok(())
+}
+
+fn spawn_scan_job(
+    jobs: JobRegistry,
+    config: Arc<AppConfig>,
+    store: Store,
+    job: JobStatus,
+    roots: Option<Vec<String>>,
+) {
+    tokio::spawn(async move {
+        let job_id = job.id.clone();
+        let jobs_for_work = jobs.clone();
+        let config_for_work = config.clone();
+        let store_for_work = store.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            let mut emitter = ScanProgressEmitter::new(jobs_for_work.clone(), job.clone());
+            scan_projects_with_progress(&config_for_work, &store_for_work, roots, |progress| {
+                emitter.emit(progress)
+            })
+        })
+        .await;
+
+        match result {
+            Ok(Ok(projects)) => {
+                let _ = finish_job_from_latest(
+                    &jobs,
+                    &job_id,
+                    "completed",
+                    &format!("Indexed {} project(s).", projects.len()),
+                );
+            }
+            Ok(Err(error)) => {
+                let _ = finish_job_from_latest(&jobs, &job_id, "failed", &error.to_string());
+            }
+            Err(error) => {
+                let _ = finish_job_from_latest(&jobs, &job_id, "failed", &error.to_string());
+            }
+        }
+    });
+}
+
+fn spawn_project_reindex_job(
+    jobs: JobRegistry,
+    config: Arc<AppConfig>,
+    store: Store,
+    job: JobStatus,
+    project_id: String,
+    tool: String,
+) {
+    tokio::spawn(async move {
+        let job_id = job.id.clone();
+        let jobs_for_work = jobs.clone();
+        let config_for_work = config.clone();
+        let store_for_work = store.clone();
+        let project_id_for_work = project_id.clone();
+        let tool_for_work = tool.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            let mut emitter = ScanProgressEmitter::new(jobs_for_work.clone(), job.clone());
+            reindex_project_tool_with_progress(
+                &config_for_work,
+                &store_for_work,
+                &project_id_for_work,
+                &tool_for_work,
+                |progress| emitter.emit(progress),
+            )
+        })
+        .await;
+
+        match result {
+            Ok(Ok(surface)) => {
+                let _ = finish_job_from_latest(
+                    &jobs,
+                    &job_id,
+                    "completed",
+                    &format!(
+                        "Reindexed {} for {}.",
+                        surface.tool.display_name, surface.project.display_path
+                    ),
+                );
+            }
+            Ok(Err(error)) => {
+                let _ = finish_job_from_latest(&jobs, &job_id, "failed", &error.to_string());
+            }
+            Err(error) => {
+                let _ = finish_job_from_latest(&jobs, &job_id, "failed", &error.to_string());
+            }
+        }
+    });
+}
+
+fn finish_job_from_latest(
+    jobs: &JobRegistry,
+    job_id: &str,
+    status: &str,
+    message: &str,
+) -> Result<JobStatus> {
+    let job = jobs
+        .get(job_id)?
+        .ok_or_else(|| anyhow::anyhow!("job not found during finish"))?;
+    jobs.finish(job, status, message)
 }
 
 struct ScanProgressEmitter {
@@ -525,6 +615,7 @@ impl IntoResponse for ApiError {
 mod tests {
     use chrono::Utc;
     use tempfile::TempDir;
+    use tokio::time::{sleep, Duration};
 
     use crate::{
         config::AppConfig,
@@ -603,5 +694,125 @@ mod tests {
 
         assert_eq!(error.status, StatusCode::NOT_FOUND);
         assert_eq!(error.message, "node not found");
+    }
+
+    #[tokio::test]
+    async fn post_scan_returns_running_job_immediately_and_other_requests_still_work() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let repo = home.join("git").join("demo");
+        std::fs::create_dir_all(repo.join(".git")).expect("git dir");
+        std::fs::write(repo.join("AGENTS.md"), "policy\n").expect("agents");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".codex")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        store.ensure_layout().expect("layout");
+        let state = AppState::new(config, store);
+
+        let Json(job) = post_scan(State(state.clone()), Json(None))
+            .await
+            .expect("scan start");
+        assert_eq!(job.status, "running");
+        assert_eq!(job.kind, "scan");
+        assert_eq!(job.scope_kind.as_deref(), Some("global"));
+
+        let Json(_projects) = get_projects(State(state.clone()))
+            .await
+            .expect("projects request");
+
+        sleep(Duration::from_millis(10)).await;
+        let persisted = state.jobs.get(&job.id).expect("load job").expect("job present");
+        assert_eq!(persisted.id, job.id);
+    }
+
+    #[tokio::test]
+    async fn post_project_reindex_returns_running_job_immediately() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let repo = home.join("git").join("demo");
+        std::fs::create_dir_all(repo.join(".git")).expect("git dir");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".codex")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        store.ensure_layout().expect("layout");
+
+        let project = ProjectSummary {
+            id: "demo".to_string(),
+            root_path: repo.to_string_lossy().to_string(),
+            display_path: "~/git/demo".to_string(),
+            name: "demo".to_string(),
+            kind: ProjectKind::GitRepo,
+            discovery_reason: String::new(),
+            signal_score: 300,
+            indexed_at: Utc::now(),
+            status: "ready".to_string(),
+        };
+        store
+            .write_json(&store.projects_index_path(), &vec![project])
+            .expect("project index");
+
+        let state = AppState::new(config, store);
+        let Json(job) = post_project_reindex(
+            State(state),
+            Path("demo".to_string()),
+            Json(ProjectReindexBody {
+                tool: "codex".to_string(),
+            }),
+        )
+        .await
+        .expect("reindex start");
+
+        assert_eq!(job.status, "running");
+        assert_eq!(job.kind, "scan");
+        assert_eq!(job.scope_kind.as_deref(), Some("project_tool"));
+        assert_eq!(job.project_id.as_deref(), Some("demo"));
+        assert_eq!(job.tool.as_deref(), Some("codex"));
+    }
+
+    #[tokio::test]
+    async fn scan_start_rejects_when_another_scan_job_is_running() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".codex")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        store.ensure_layout().expect("layout");
+        let state = AppState::new(config, store);
+        state
+            .jobs
+            .create_scoped("scan", "Scanning projects.", Some("global"), None, None)
+            .expect("running job");
+
+        let error = post_scan(State(state), Json(None))
+            .await
+            .expect_err("scan should conflict");
+        assert_eq!(error.status, StatusCode::CONFLICT);
+        assert_eq!(error.message, "Another scan or reindex job is already running.");
     }
 }
