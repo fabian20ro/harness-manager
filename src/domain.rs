@@ -134,6 +134,25 @@ pub struct ArtifactRule {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ProjectDiscoveryRootStrategy {
+    MatchParent,
+    LevelsUp { count: usize },
+    NearestPluginRoot,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ProjectDiscoveryRule {
+    pub glob: String,
+    pub kind: ProjectKind,
+    pub score: i32,
+    pub reason: String,
+    pub root_strategy: ProjectDiscoveryRootStrategy,
+    #[serde(default)]
+    pub skip_if_scan_root: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PluginSystemCatalog {
     pub system: String,
     #[serde(default)]
@@ -159,6 +178,8 @@ pub struct ToolCatalog {
     pub known_locations: Vec<KnownLocation>,
     #[serde(default)]
     pub artifact_rules: Vec<ArtifactRule>,
+    #[serde(default)]
+    pub project_discovery_rules: Vec<ProjectDiscoveryRule>,
     #[serde(default)]
     pub observed_probes: Vec<String>,
     #[serde(default)]

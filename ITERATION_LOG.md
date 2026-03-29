@@ -7,6 +7,16 @@
 
 ---
 
+### [2026-03-29] Catalog-driven project discovery signals
+
+**Context:** project discovery had already expanded beyond `.git`, but the non-git rules still lived in Rust heuristics, so adding Codex/Copilot/Antigravity package/workspace signals from docs would keep forcing scanner code edits and cross-surface bugs
+**Happened:** added `project_discovery_rules` to the catalog schema with discovery kind, score, reason, root strategy, and scan-root skip behavior; refactored project candidate discovery to compile catalog rules once and apply them generically while keeping `.git` as the only built-in root signal; moved Codex, Copilot CLI, IntelliJ/Copilot, Claude, and conservative Antigravity discovery signals into seed catalogs; constrained Codex/Claude package rules to their global plugin roots to avoid cross-surface `SKILL.md` leakage; added regressions for Copilot skill packages, hooks non-promotion, duplicate-signal merge, and kept existing git/package precedence; updated README and verified `cargo test`
+**Outcome:** success
+**Insight:** discovery signals need surface scoping in data, not just path-shape matching; generic `SKILL.md` rules become wrong immediately once multiple harness ecosystems share the same filename conventions
+**Promoted:** no
+
+---
+
 ### [2026-03-29] Hybrid project discovery with plugin package tier
 
 **Context:** project discovery only accepted `.git` roots, so real non-git harness workspaces and installed plugin packages never appeared in Projects; broadening discovery risked flooding the list with weak-signal directories

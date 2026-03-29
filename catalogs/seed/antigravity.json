@@ -2,9 +2,14 @@
   "surface": "antigravity",
   "family": "antigravity",
   "display_name": "Antigravity",
-  "version": "2026-03-28",
+  "version": "2026-03-29",
   "support_level": "experimental",
-  "sources": [],
+  "sources": [
+    {
+      "label": "Antigravity skills",
+      "url": "https://antigravity.google/docs/skills"
+    }
+  ],
   "known_locations": [
     {
       "path": "~/.config/antigravity",
@@ -26,6 +31,15 @@
       "artifact_type": "instructions",
       "reason": "Repo instructions for Antigravity.",
       "states": ["declared"]
+    }
+  ],
+  "project_discovery_rules": [
+    {
+      "glob": "ANTIGRAVITY.md",
+      "kind": "workspace_candidate",
+      "score": 190,
+      "reason": "Workspace contains ANTIGRAVITY.md.",
+      "root_strategy": { "type": "match_parent" }
     }
   ],
   "observed_probes": ["ps:antigravity"],

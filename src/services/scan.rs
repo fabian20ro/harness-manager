@@ -16,9 +16,9 @@ use crate::{
     config::AppConfig,
     domain::{
         ArtifactNode, ArtifactRule, ArtifactType, EdgeType, GraphEdge, GraphNode, NodeState,
-        PluginArtifactNode, PluginNode, ProjectKind, ProjectNode, ProjectSummary, RemoteSnapshotNode,
-        ScopeType, SnapshotAssociation, SurfaceState, ToolCatalog, ToolContext, ToolContextNode,
-        Verdict,
+        PluginArtifactNode, PluginNode, ProjectDiscoveryRootStrategy, ProjectDiscoveryRule,
+        ProjectKind, ProjectNode, ProjectSummary, RemoteSnapshotNode, ScopeType,
+        SnapshotAssociation, SurfaceState, ToolCatalog, ToolContext, ToolContextNode, Verdict,
     },
     services::refs::{extract_references, ResolverContext},
     storage::Store,
@@ -65,6 +65,16 @@ struct CandidateSignal {
     kind: ProjectKind,
     score: i32,
     reason: String,
+}
+
+#[derive(Clone, Debug)]
+struct CompiledProjectDiscoveryRule {
+    kind: ProjectKind,
+    score: i32,
+    reason: String,
+    root_strategy: ProjectDiscoveryRootStrategy,
+    skip_if_scan_root: bool,
+    matcher: globset::GlobMatcher,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -155,6 +165,7 @@ where
         &roots,
         &config.known_global_dirs,
         config.scan_max_depth,
+        &catalogs,
         &config.home_dir,
         &mut on_progress,
     )?;
@@ -1718,11 +1729,13 @@ fn discover_project_candidates(
     roots: &[PathBuf],
     known_global_dirs: &[PathBuf],
     max_depth: usize,
+    catalogs: &HashMap<String, ToolCatalog>,
 ) -> Vec<ProjectCandidate> {
     discover_project_candidates_with_progress(
         roots,
         known_global_dirs,
         max_depth,
+        catalogs,
         Path::new(""),
         &mut |_| Ok(()),
     )
@@ -1733,6 +1746,7 @@ fn discover_project_candidates_with_progress(
     roots: &[PathBuf],
     known_global_dirs: &[PathBuf],
     max_depth: usize,
+    catalogs: &HashMap<String, ToolCatalog>,
     home_dir: &Path,
     on_progress: &mut dyn FnMut(ScanProgress) -> Result<()>,
 ) -> Result<Vec<ProjectCandidate>> {
@@ -1740,6 +1754,7 @@ fn discover_project_candidates_with_progress(
     search_roots.extend(known_global_dirs.iter().cloned());
     search_roots.sort();
     search_roots.dedup();
+    let compiled_rules = compile_project_discovery_rules(catalogs)?;
 
     let mut signals = Vec::new();
     for root in &search_roots {
@@ -1798,10 +1813,7 @@ fn discover_project_candidates_with_progress(
             }
 
             let relative = path.strip_prefix(root).unwrap_or(path);
-            if let Some(signal) = workspace_signal_for_entry(path, relative, root) {
-                signals.push(signal);
-            }
-            if let Some(signal) = plugin_signal_for_entry(path, relative, root) {
+            for signal in project_discovery_signals_for_entry(path, relative, root, &compiled_rules) {
                 signals.push(signal);
             }
         }
@@ -1815,150 +1827,136 @@ fn should_traverse_candidate_entry(entry: &walkdir::DirEntry) -> bool {
     !matches!(name.as_ref(), ".git" | "node_modules" | "target" | "dist")
 }
 
-fn workspace_signal_for_entry(path: &Path, _relative: &Path, scan_root: &Path) -> Option<CandidateSignal> {
-    if path.is_file() {
-        let file_name = path.file_name()?.to_str()?;
-        if file_name == "AGENTS.md" {
-            return Some(CandidateSignal {
-                root_path: path.parent()?.to_path_buf(),
-                kind: ProjectKind::WorkspaceCandidate,
-                score: 220,
-                reason: "Workspace contains AGENTS.md.".to_string(),
-            });
-        }
-        if file_name == "CLAUDE.md" {
-            return Some(CandidateSignal {
-                root_path: path.parent()?.to_path_buf(),
-                kind: ProjectKind::WorkspaceCandidate,
-                score: 215,
-                reason: "Workspace contains CLAUDE.md.".to_string(),
-            });
-        }
-        if file_name == "config.toml"
-            && path
-                .parent()
-                .and_then(|parent| parent.file_name())
-                .and_then(|name| name.to_str())
-                == Some(".codex")
+fn compile_project_discovery_rules(
+    catalogs: &HashMap<String, ToolCatalog>,
+) -> Result<Vec<CompiledProjectDiscoveryRule>> {
+    let mut compiled = Vec::new();
+    for catalog in catalogs.values() {
+        for ProjectDiscoveryRule {
+            glob,
+            kind,
+            score,
+            reason,
+            root_strategy,
+            skip_if_scan_root,
+        } in &catalog.project_discovery_rules
         {
-            if path.parent()? == scan_root {
-                return None;
-            }
-            return Some(CandidateSignal {
-                root_path: path.parent()?.parent()?.to_path_buf(),
-                kind: ProjectKind::WorkspaceCandidate,
-                score: 210,
-                reason: "Workspace contains .codex/config.toml.".to_string(),
-            });
-        }
-        if file_name == "config.json"
-            && path
-                .parent()
-                .and_then(|parent| parent.file_name())
-                .and_then(|name| name.to_str())
-                == Some(".claude")
-        {
-            if path.parent()? == scan_root {
-                return None;
-            }
-            return Some(CandidateSignal {
-                root_path: path.parent()?.parent()?.to_path_buf(),
-                kind: ProjectKind::WorkspaceCandidate,
-                score: 205,
-                reason: "Workspace contains .claude/config.json.".to_string(),
-            });
-        }
-        if file_name == "copilot-instructions.md"
-            && path
-                .parent()
-                .and_then(|parent| parent.file_name())
-                .and_then(|name| name.to_str())
-                == Some(".github")
-        {
-            if path.parent()? == scan_root {
-                return None;
-            }
-            return Some(CandidateSignal {
-                root_path: path.parent()?.parent()?.to_path_buf(),
-                kind: ProjectKind::WorkspaceCandidate,
-                score: 200,
-                reason: "Workspace contains .github/copilot-instructions.md.".to_string(),
-            });
-        }
-        if path.extension().and_then(|ext| ext.to_str()) == Some("md")
-            && path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name.ends_with(".agent.md"))
-            && path
-                .parent()
-                .and_then(|parent| parent.file_name())
-                .and_then(|name| name.to_str())
-                == Some("agents")
-            && path
-                .parent()
-                .and_then(|parent| parent.parent())
-                .and_then(|parent| parent.file_name())
-                .and_then(|name| name.to_str())
-                == Some(".github")
-        {
-            if path.parent()?.parent()? == scan_root {
-                return None;
-            }
-            return Some(CandidateSignal {
-                root_path: path.parent()?.parent()?.parent()?.to_path_buf(),
-                kind: ProjectKind::WorkspaceCandidate,
-                score: 195,
-                reason: "Workspace contains .github/agents/*.agent.md.".to_string(),
+            compiled.push(CompiledProjectDiscoveryRule {
+                kind: kind.clone(),
+                score: *score,
+                reason: reason.clone(),
+                root_strategy: root_strategy.clone(),
+                skip_if_scan_root: *skip_if_scan_root,
+                matcher: Glob::new(glob)?.compile_matcher(),
             });
         }
     }
-    None
+    Ok(compiled)
 }
 
-fn plugin_signal_for_entry(path: &Path, _relative: &Path, scan_root: &Path) -> Option<CandidateSignal> {
+fn project_discovery_signals_for_entry(
+    path: &Path,
+    relative: &Path,
+    scan_root: &Path,
+    rules: &[CompiledProjectDiscoveryRule],
+) -> Vec<CandidateSignal> {
     if !path.is_file() {
-        return None;
+        return Vec::new();
     }
 
-    if path.file_name().and_then(|name| name.to_str()) == Some("plugin.json")
+    let mut signals = Vec::new();
+    for rule in rules {
+        if !project_discovery_rule_matches(relative, scan_root, &rule.matcher) {
+            continue;
+        }
+        let Some(root_path) = resolve_project_discovery_root(path, scan_root, &rule.root_strategy)
+        else {
+            continue;
+        };
+        if rule.skip_if_scan_root && !root_path.starts_with(scan_root) {
+            continue;
+        }
+        signals.push(CandidateSignal {
+            root_path,
+            kind: rule.kind.clone(),
+            score: rule.score,
+            reason: rule.reason.clone(),
+        });
+    }
+    signals
+}
+
+fn project_discovery_rule_matches(
+    relative: &Path,
+    scan_root: &Path,
+    matcher: &globset::GlobMatcher,
+) -> bool {
+    project_discovery_match_candidates(relative, scan_root)
+        .into_iter()
+        .any(|candidate| matcher.is_match(candidate))
+}
+
+fn project_discovery_match_candidates(relative: &Path, scan_root: &Path) -> Vec<String> {
+    let components = relative
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+    if components.is_empty() {
+        return Vec::new();
+    }
+
+    let mut matches = Vec::new();
+    for index in 0..components.len() {
+        matches.push(components[index..].join("/"));
+    }
+
+    if let Some(root_name) = scan_root.file_name().and_then(|name| name.to_str()) {
+        if !root_name.is_empty() {
+            let prefixed = matches
+                .iter()
+                .map(|candidate| format!("{root_name}/{candidate}"))
+                .collect::<Vec<_>>();
+            matches.extend(prefixed);
+        }
+    }
+
+    matches.sort();
+    matches.dedup();
+    matches
+}
+
+fn resolve_project_discovery_root(
+    path: &Path,
+    scan_root: &Path,
+    strategy: &ProjectDiscoveryRootStrategy,
+) -> Option<PathBuf> {
+    match strategy {
+        ProjectDiscoveryRootStrategy::MatchParent => path.parent().map(Path::to_path_buf),
+        ProjectDiscoveryRootStrategy::LevelsUp { count } => {
+            let mut current = if is_hidden_plugin_manifest(path) {
+                path.parent()?
+            } else {
+                path
+            };
+            for _ in 0..*count {
+                current = current.parent()?;
+            }
+            Some(current.to_path_buf())
+        }
+        ProjectDiscoveryRootStrategy::NearestPluginRoot => {
+            Some(nearest_plugin_root(path.parent()?, scan_root))
+        }
+    }
+}
+
+fn is_hidden_plugin_manifest(path: &Path) -> bool {
+    path.file_name().and_then(|name| name.to_str()) == Some("plugin.json")
         && matches!(
             path.parent()
                 .and_then(|parent| parent.file_name())
                 .and_then(|name| name.to_str()),
             Some(".codex-plugin" | ".claude-plugin")
         )
-    {
-        return Some(CandidateSignal {
-            root_path: path.parent()?.parent()?.to_path_buf(),
-            kind: ProjectKind::PluginPackage,
-            score: 130,
-            reason: format!(
-                "Plugin package contains {}.",
-                path.parent()?.file_name()?.to_string_lossy()
-            ),
-        });
-    }
-
-    if path.file_name().and_then(|name| name.to_str()) == Some(".mcp.json") {
-        return Some(CandidateSignal {
-            root_path: path.parent()?.to_path_buf(),
-            kind: ProjectKind::PluginPackage,
-            score: 120,
-            reason: "Plugin package contains .mcp.json.".to_string(),
-        });
-    }
-
-    if path.file_name().and_then(|name| name.to_str()) == Some("SKILL.md") {
-        return Some(CandidateSignal {
-            root_path: nearest_plugin_root(path.parent()?, scan_root),
-            kind: ProjectKind::PluginPackage,
-            score: 110,
-            reason: "Plugin package contains SKILL.md.".to_string(),
-        });
-    }
-
-    None
 }
 
 fn nearest_plugin_root(start: &Path, scan_root: &Path) -> PathBuf {
@@ -2371,8 +2369,12 @@ mod tests {
         let temp = TempDir::new().expect("tempdir");
         let home = temp.path().join("home");
         let weak = home.join("scratch").join("weak-only");
-        fs::create_dir_all(weak.join("agents")).expect("agents dir");
-        fs::write(weak.join("hooks.json"), "{}").expect("hooks");
+        fs::create_dir_all(weak.join(".github").join("hooks")).expect("hooks dir");
+        fs::write(
+            weak.join(".github").join("hooks").join("pre-tool-use.json"),
+            "{}",
+        )
+        .expect("hooks");
 
         let config = AppConfig {
             home_dir: home.clone(),
@@ -2388,6 +2390,39 @@ mod tests {
 
         let projects = scan_projects(&config, &store, None).expect("scan");
         assert!(projects.is_empty());
+    }
+
+    #[test]
+    fn scan_discovers_copilot_skill_packages_from_global_github_root() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let skill_root = home.join(".github").join("skills").join("reviewer");
+        fs::create_dir_all(&skill_root).expect("skill dir");
+        fs::write(
+            skill_root.join("SKILL.md"),
+            "---\nname: Reviewer\ndescription: test\n---\n",
+        )
+        .expect("skill");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".github")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+
+        let projects = scan_projects(&config, &store, None).expect("scan");
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].kind, ProjectKind::PluginPackage);
+        assert_eq!(projects[0].root_path, skill_root.to_string_lossy());
+        assert!(projects[0]
+            .discovery_reason
+            .contains(".github/skills/*/SKILL.md"));
     }
 
     #[test]
@@ -2425,6 +2460,36 @@ mod tests {
         assert_eq!(projects[0].kind, ProjectKind::PluginPackage);
         assert_eq!(projects[0].root_path, plugin_root.to_string_lossy());
         assert!(projects[0].discovery_reason.contains(".mcp.json"));
+    }
+
+    #[test]
+    fn scan_merges_duplicate_workspace_signals_for_same_root() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let workspace = home.join("scratch").join("shared-signals");
+        fs::create_dir_all(workspace.join(".codex")).expect("codex dir");
+        fs::write(workspace.join("AGENTS.md"), "Use local policy.\n").expect("agents");
+        fs::write(workspace.join(".codex").join("config.toml"), "model = \"gpt-5\"\n")
+            .expect("config");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join("scratch")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+
+        let projects = scan_projects(&config, &store, None).expect("scan");
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].kind, ProjectKind::WorkspaceCandidate);
+        assert_eq!(projects[0].root_path, workspace.to_string_lossy());
+        assert!(projects[0].discovery_reason.contains("AGENTS.md"));
+        assert_eq!(projects[0].signal_score, 220);
     }
 
     #[test]

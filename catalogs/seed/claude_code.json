@@ -2,7 +2,7 @@
   "surface": "claude_code",
   "family": "claude",
   "display_name": "Claude Code",
-  "version": "2026-03-29",
+  "version": "2026-03-30",
   "support_level": "full",
   "sources": [
     {
@@ -37,6 +37,30 @@
       "artifact_type": "local_doc",
       "reason": "Claude local docs or rules.",
       "states": ["declared"]
+    }
+  ],
+  "project_discovery_rules": [
+    {
+      "glob": "CLAUDE.md",
+      "kind": "workspace_candidate",
+      "score": 215,
+      "reason": "Workspace contains CLAUDE.md.",
+      "root_strategy": { "type": "match_parent" }
+    },
+    {
+      "glob": ".claude/config.json",
+      "kind": "workspace_candidate",
+      "score": 205,
+      "reason": "Workspace contains .claude/config.json.",
+      "root_strategy": { "type": "levels_up", "count": 2 },
+      "skip_if_scan_root": true
+    },
+    {
+      "glob": ".claude/**/.claude-plugin/plugin.json",
+      "kind": "plugin_package",
+      "score": 130,
+      "reason": "Plugin package contains .claude-plugin.",
+      "root_strategy": { "type": "levels_up", "count": 1 }
     }
   ],
   "observed_probes": ["ps:claude"],

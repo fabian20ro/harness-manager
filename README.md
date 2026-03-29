@@ -17,7 +17,7 @@ Runtime split:
 - GitHub Pages hosts only static UI; Pages UI still talks to local helper by default
 
 Main tabs:
-- `Projects`: discovered git repos from configured roots; default root = `~/git`
+- `Projects`: discovered git repos, non-git workspaces, and plugin packages from configured roots; default root = `~/git`
 - `Docs`: fetch remote docs, save normalized local snapshots, attach to selected project/tool
 - `Tool`: choose surface context
 - `Inspect`: effective context tree, viewer, reasons, refs
@@ -39,6 +39,7 @@ Plugin support now:
 - plugin manifests + plugin docs become graph nodes
 - Codex plugin skills become first-class plugin artifacts
 - compatibility edges shown where catalog says so
+- non-git project/package discovery signals come from tool catalogs, not scanner hardcoding
 
 ## Truth model
 
