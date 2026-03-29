@@ -60,6 +60,15 @@ function treeStorageKey(projectId: string, toolId: string) {
   return `${STORAGE_PREFIX}.inspectTreeExpanded.${projectId}.${toolId}`;
 }
 
+function formatInspectFailureMessage(
+  nodeLabel: string,
+  status: number,
+  payload?: { error?: string } | null,
+) {
+  const detail = payload?.error?.trim() || `HTTP ${status}`;
+  return `Inspect failed for ${nodeLabel}: ${detail}`;
+}
+
 export function useInspectController() {
   const [activeTab, setActiveTab] = useState<AppTab>(
     () => loadStored(`${STORAGE_PREFIX}.activeTab`, "Projects") as AppTab,
@@ -78,7 +87,8 @@ export function useInspectController() {
   const [selectedNode, setSelectedNode] = useState<string>("");
   const [inspect, setInspect] = useState<InspectPayload | null>(null);
   const [docUrl, setDocUrl] = useState("https://developers.openai.com/codex/plugins");
-  const [statusMessage, setStatusMessage] = useState("Ready.");
+  const [statusMessage, setStatusMessage] = useState("");
+  const [inspectStatusMessage, setInspectStatusMessage] = useState("");
   const [scanJob, setScanJob] = useState<JobStatus | null>(null);
   const [apiBase, setApiBase] = useState(defaultApiBase);
   const [staleBuildMessage, setStaleBuildMessage] = useState("");
@@ -122,7 +132,6 @@ export function useInspectController() {
 
   async function runGlobalScan() {
     setIsStartingGlobalScan(true);
-    setStatusMessage("Starting global reindex.");
     try {
       const response = await fetch(apiUrl(apiBase, "/api/scan"), {
         method: "POST",
@@ -134,7 +143,6 @@ export function useInspectController() {
       }
       const payload = (await response.json()) as JobStatus;
       setScanJob(payload);
-      setStatusMessage(payload.message);
       await loadProjects();
     } catch (error) {
       setStatusMessage(String(error));
@@ -147,7 +155,6 @@ export function useInspectController() {
   async function runScopedReindex() {
     if (!selectedProject) return;
     setIsStartingScopedReindex(true);
-    setStatusMessage(`Reindexing ${LABELS[selectedTool as keyof typeof LABELS] ?? selectedTool}.`);
     try {
       const response = await fetch(apiUrl(apiBase, `/api/projects/${selectedProject}/reindex`), {
         method: "POST",
@@ -159,7 +166,6 @@ export function useInspectController() {
       }
       const payload = (await response.json()) as JobStatus;
       setScanJob(payload);
-      setStatusMessage(payload.message);
       await refreshGraph(selectedProject, selectedTool);
     } catch (error) {
       setStatusMessage(String(error));
@@ -279,7 +285,6 @@ export function useInspectController() {
       const job = JSON.parse(event.data) as JobStatus;
       if (job.kind === "scan") {
         setScanJob(job);
-        setStatusMessage(job.message);
         if (clearScanJobTimer.current) {
           window.clearTimeout(clearScanJobTimer.current);
           clearScanJobTimer.current = null;
@@ -315,11 +320,17 @@ export function useInspectController() {
   useEffect(() => {
     if (!selectedProject || !selectedNode || !graph) {
       setInspect(null);
+      setInspectStatusMessage("");
       return;
     }
-    if (!graph.nodes.some((node) => node.id === selectedNode)) {
+    const selectedGraphNode = graph.nodes.find((node) => node.id === selectedNode);
+    if (!selectedGraphNode) {
+      setInspect(null);
+      setInspectStatusMessage(`Inspect unavailable for ${selectedNode}: node not found.`);
       return;
     }
+
+    setInspectStatusMessage("");
 
     fetch(
       apiUrl(
@@ -329,12 +340,25 @@ export function useInspectController() {
     )
       .then(async (response) => {
         if (!response.ok) {
-          throw new Error(`Inspect failed: ${response.status}`);
+          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(
+            formatInspectFailureMessage(
+              String(selectedGraphNode.display_path ?? selectedGraphNode.path ?? selectedNode),
+              response.status,
+              payload,
+            ),
+          );
         }
         return (await response.json()) as InspectPayload;
       })
-      .then((payload) => setInspect(payload))
-      .catch((error) => setStatusMessage(String(error)));
+      .then((payload) => {
+        setInspect(payload);
+        setInspectStatusMessage("");
+      })
+      .catch((error) => {
+        setInspect(null);
+        setInspectStatusMessage(String(error));
+      });
   }, [apiBase, graph, selectedProject, selectedNode, selectedTool]);
 
   useEffect(() => {
@@ -355,6 +379,7 @@ export function useInspectController() {
   }, [apiBase, scanJob, selectedProject, selectedTool]);
 
   const tree = useMemo(() => buildInspectTree(graph), [graph]);
+  const allTreeKeys = useMemo(() => collectAllDirectoryKeys(tree), [tree]);
   const selectedAncestorKeys = useMemo(
     () => collectSelectedAncestorKeys(tree, selectedNode),
     [selectedNode, tree],
@@ -506,14 +531,27 @@ export function useInspectController() {
     );
   }
 
+  function expandAllTree() {
+    setHasStoredExpandedTreeState(true);
+    setExpandedTreeKeys(allTreeKeys);
+  }
+
+  function collapseAllTree() {
+    setHasStoredExpandedTreeState(true);
+    setExpandedTreeKeys([]);
+  }
+
   return {
     activeTab,
+    allTreeKeys,
     apiBase,
     currentNode,
     docUrl,
+    collapseAllTree,
     fetchDocs,
     globalScanJob,
     graph,
+    inspectStatusMessage,
     inspect,
     isGlobalScanRunning:
       isStartingGlobalScan || (globalScanJob?.status === "running" && globalScanJob.kind === "scan"),
@@ -543,6 +581,7 @@ export function useInspectController() {
     sidebarCollapsed,
     staleBuildMessage,
     statusMessage,
+    expandAllTree,
     toggleExpandedKey,
     tree,
     treeExpandedKeys: expandedTreeKeys,

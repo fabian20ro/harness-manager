@@ -10,6 +10,13 @@ import { useInspectController } from "./hooks/useInspectController";
 export function App() {
   const controller = useInspectController();
   const inspectMode = controller.activeTab === "Inspect";
+  const expandedKeySet = new Set(controller.treeExpandedKeys);
+  const hasExpandableTree = controller.allTreeKeys.length > 0;
+  const treeFullyExpanded =
+    hasExpandableTree && controller.allTreeKeys.every((key) => expandedKeySet.has(key));
+  const treeFullyCollapsed = controller.treeExpandedKeys.length === 0;
+  const inlineStatusMessage =
+    controller.inspectStatusMessage || (!controller.scanJob ? controller.statusMessage : "");
 
   return (
     <div className={controller.sidebarCollapsed ? "shell shell-collapsed" : "shell"}>
@@ -41,7 +48,7 @@ export function App() {
         {controller.staleBuildMessage ? (
           <p className="stale-banner">{controller.staleBuildMessage}</p>
         ) : null}
-        <p className="workspace-status">{controller.statusMessage}</p>
+        <ScanStatusBar job={controller.scanJob} message={inlineStatusMessage} />
 
         {controller.activeTab === "Projects" && (
           <section className="panel">
@@ -89,7 +96,25 @@ export function App() {
         {inspectMode && (
           <section className="inspect-grid">
             <div className="panel inspect-panel inspect-panel-tree">
-              <h2>Effective Context Tree</h2>
+              <div className="inspect-panel-header">
+                <h2>Effective Context Tree</h2>
+                <div className="inspect-panel-actions">
+                  <button
+                    className="panel-action-button"
+                    onClick={() => controller.expandAllTree()}
+                    disabled={!hasExpandableTree || treeFullyExpanded}
+                  >
+                    Expand all
+                  </button>
+                  <button
+                    className="panel-action-button"
+                    onClick={() => controller.collapseAllTree()}
+                    disabled={!hasExpandableTree || treeFullyCollapsed}
+                  >
+                    Collapse all
+                  </button>
+                </div>
+              </div>
               <div className="inspect-panel-body">
                 <InspectTree
                   expandedKeys={controller.treeExpandedKeys}
@@ -145,7 +170,6 @@ export function App() {
           </section>
         )}
       </main>
-      <ScanStatusBar job={controller.scanJob} />
     </div>
   );
 }

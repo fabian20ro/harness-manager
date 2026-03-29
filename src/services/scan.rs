@@ -1086,13 +1086,106 @@ fn collect_reference_edges(
             if hit.promotes_effective && !hit.broken {
                 collection.promotable_edges.push(PromotableEdge {
                     from: artifact.id.clone(),
-                    to: target_id,
+                    to: target_id.clone(),
                     reason: hit.reason,
                 });
+            }
+            if !hit.broken && hit.resolved_path.is_dir() {
+                materialize_referenced_directory(
+                    &target_id,
+                    &hit.resolved_path,
+                    &target_display_path,
+                    nodes,
+                    &mut existing_path_to_id,
+                    &mut artifact_nodes,
+                    &mut collection,
+                    indexed_at,
+                    &config.home_dir,
+                )?;
             }
         }
     }
     Ok(collection)
+}
+
+fn materialize_referenced_directory(
+    directory_id: &str,
+    directory_path: &Path,
+    directory_display_path: &str,
+    nodes: &mut BTreeMap<String, GraphNode>,
+    existing_path_to_id: &mut HashMap<String, String>,
+    artifact_nodes: &mut VecDeque<ScannableArtifact>,
+    collection: &mut ReferenceCollection,
+    indexed_at: DateTime<Utc>,
+    home_dir: &Path,
+) -> Result<()> {
+    let mut file_paths = WalkDir::new(directory_path)
+        .min_depth(1)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_file())
+        .map(|entry| entry.into_path())
+        .collect::<Vec<_>>();
+    file_paths.sort();
+
+    for file_path in file_paths {
+        let file_path_string = file_path.to_string_lossy().to_string();
+        let file_id = existing_path_to_id
+            .get(&file_path_string)
+            .cloned()
+            .unwrap_or_else(|| stable_id("reference", &file_path_string));
+        let file_display_path = display_path(&file_path, home_dir);
+        if !nodes.contains_key(&file_id) {
+            let reason = format!(
+                "Contained in referenced directory: {}.",
+                directory_display_path
+            );
+            let states = vec![NodeState::ReferencedOnly];
+            nodes.insert(
+                file_id.clone(),
+                GraphNode::Artifact(ArtifactNode {
+                    id: file_id.clone(),
+                    path: file_path_string.clone(),
+                    display_path: file_display_path.clone(),
+                    artifact_type: ArtifactType::ReferenceTarget,
+                    tool_family: "reference".to_string(),
+                    scope_type: ScopeType::Repo,
+                    states: states.clone(),
+                    confidence: confidence_from_states(&states),
+                    origin: "reference".to_string(),
+                    last_indexed_at: indexed_at,
+                    hash: file_hash(&file_path).unwrap_or_else(|_| "missing".to_string()),
+                    mtime: fs::metadata(&file_path).ok().and_then(mtime_utc),
+                    reason: reason.clone(),
+                }),
+            );
+            existing_path_to_id.insert(file_path_string.clone(), file_id.clone());
+            collection
+                .verdicts
+                .push(node_verdict(&file_id, &states, &reason));
+        }
+        if let Some(target_artifact) = nodes.get(&file_id).and_then(artifact_node_from_graph) {
+            artifact_nodes.push_back(target_artifact);
+        }
+        let reason = format!(
+            "Contained in referenced directory: {}.",
+            directory_display_path
+        );
+        collection.edges.push(GraphEdge {
+            from: directory_id.to_string(),
+            to: file_id.clone(),
+            edge_type: EdgeType::References,
+            hardness: "hard".to_string(),
+            reason: reason.clone(),
+        });
+        collection.promotable_edges.push(PromotableEdge {
+            from: directory_id.to_string(),
+            to: file_id,
+            reason,
+        });
+    }
+
+    Ok(())
 }
 
 fn artifact_node_from_graph(node: &GraphNode) -> Option<ScannableArtifact> {
@@ -1562,7 +1655,7 @@ mod tests {
 
     use super::{
         build_surface_state, collect_repo_files, display_path, reindex_project_tool_with_progress,
-        scan_projects, scan_projects_with_progress,
+        scan_projects, scan_projects_with_progress, stable_id, EdgeType,
     };
 
     #[test]
@@ -2199,6 +2292,115 @@ mod tests {
                 if artifact.path.contains("/.codex-plugin/skills/")
                     || artifact.path.contains("\\.codex-plugin\\skills\\")
         )));
+    }
+
+    #[test]
+    fn codex_directory_references_expand_to_descendant_files() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let repo = home.join("git").join("demo");
+        fs::create_dir_all(repo.join(".git")).expect("git dir");
+        let plugin_root = home
+            .join(".codex")
+            .join(".tmp")
+            .join("plugins")
+            .join("plugins")
+            .join("vercel");
+        fs::create_dir_all(plugin_root.join(".codex-plugin")).expect("plugin dir");
+        fs::create_dir_all(plugin_root.join("skills").join("nested")).expect("skills dir");
+        fs::write(
+            plugin_root.join(".codex-plugin").join("plugin.json"),
+            r#"{"name":"vercel","skills":"./skills/","mcpServers":"./.mcp.json","hooks":"./hooks.json"}"#,
+        )
+        .expect("manifest");
+        fs::write(plugin_root.join("skills").join("root.md"), "root").expect("root skill");
+        fs::write(
+            plugin_root.join("skills").join("nested").join("deep.md"),
+            "deep",
+        )
+        .expect("deep skill");
+        fs::write(plugin_root.join(".mcp.json"), "{}").expect("mcp");
+        fs::write(plugin_root.join("hooks.json"), "{}").expect("hooks");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".codex")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        let inventory = collect_repo_files(&repo, 5);
+        let state = build_surface_state(
+            &config,
+            &store,
+            &crate::domain::ProjectSummary {
+                id: "demo".to_string(),
+                root_path: repo.to_string_lossy().to_string(),
+                display_path: display_path(&repo, &home),
+                name: "demo".to_string(),
+                indexed_at: Utc::now(),
+                status: "ready".to_string(),
+            },
+            &seed_catalog_map().expect("catalogs")["codex"],
+            &inventory,
+        )
+        .expect("state");
+
+        let skills_dir = plugin_root.join("skills").to_string_lossy().to_string();
+        let root_skill = plugin_root
+            .join("skills")
+            .join("root.md")
+            .to_string_lossy()
+            .to_string();
+        let nested_skill = plugin_root
+            .join("skills")
+            .join("nested")
+            .join("deep.md")
+            .to_string_lossy()
+            .to_string();
+        let mcp_file = plugin_root.join(".mcp.json").to_string_lossy().to_string();
+        let hooks_file = plugin_root.join("hooks.json").to_string_lossy().to_string();
+
+        assert!(state.nodes.iter().any(|node| matches!(
+            node,
+            GraphNode::Artifact(artifact) if artifact.path == skills_dir
+        )));
+        assert!(state.nodes.iter().any(|node| matches!(
+            node,
+            GraphNode::Artifact(artifact) if artifact.path == root_skill
+        )));
+        assert!(state.nodes.iter().any(|node| matches!(
+            node,
+            GraphNode::Artifact(artifact) if artifact.path == nested_skill
+        )));
+        assert!(state.nodes.iter().any(|node| matches!(
+            node,
+            GraphNode::Artifact(artifact) if artifact.path == mcp_file
+        )));
+        assert!(state.nodes.iter().any(|node| matches!(
+            node,
+            GraphNode::Artifact(artifact) if artifact.path == hooks_file
+        )));
+
+        let root_skill_id = stable_id("reference", &root_skill);
+        let nested_skill_id = stable_id("reference", &nested_skill);
+        let skills_dir_id = stable_id("reference", &skills_dir);
+        assert!(state.edges.iter().any(|edge| {
+            edge.from == skills_dir_id && edge.to == root_skill_id && matches!(edge.edge_type, EdgeType::References)
+        }));
+        assert!(state.edges.iter().any(|edge| {
+            edge.from == skills_dir_id && edge.to == nested_skill_id && matches!(edge.edge_type, EdgeType::References)
+        }));
+        assert!(state.verdicts.iter().any(|verdict| {
+            verdict.entity_id == root_skill_id && verdict.states.contains(&NodeState::Effective)
+        }));
+        assert!(state.verdicts.iter().any(|verdict| {
+            verdict.entity_id == nested_skill_id && verdict.states.contains(&NodeState::Effective)
+        }));
     }
 
     #[test]

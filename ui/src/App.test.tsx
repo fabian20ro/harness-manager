@@ -59,13 +59,13 @@ describe("App", () => {
     expect(screen.getByText("cargo run")).toBeInTheDocument();
   });
 
-  it("renders bottom scan status bar from event stream updates", async () => {
+  it("renders inline scan status updates from the event stream", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       json: async () => [],
     } as Response);
 
-    render(<App />);
+    const { container } = render(<App />);
 
     await waitFor(() => expect(eventSources).toHaveLength(1));
 
@@ -87,8 +87,9 @@ describe("App", () => {
       );
     });
 
-    expect(screen.getByRole("status", { name: "Scan status" })).toBeInTheDocument();
-    expect(screen.getByText("Scanning ~/git/demo")).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Status" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Status" })).toHaveTextContent("Scanning ~/git/demo");
+    expect(container.querySelector(".status-notice")).toBeInTheDocument();
     vi.useFakeTimers();
 
     await act(async () => {
@@ -106,13 +107,13 @@ describe("App", () => {
       );
     });
 
-    expect(screen.getByRole("status", { name: "Scan status" })).toHaveTextContent(
+    expect(screen.getByRole("status", { name: "Status" })).toHaveTextContent(
       "Indexed 1 project(s).",
     );
     await act(async () => {
       vi.advanceTimersByTime(4_001);
     });
-    expect(screen.queryByRole("status", { name: "Scan status" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Status" })).not.toBeInTheDocument();
     vi.useRealTimers();
   });
 
@@ -456,5 +457,249 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Collapse git" })).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Expand notes" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Select policy.md" })).not.toBeInTheDocument();
+  });
+
+  it("supports expand all and collapse all tree actions", async () => {
+    Object.defineProperty(window, "localStorage", {
+      value: {
+        getItem: vi.fn((key: string) => {
+          if (key === "harnessInspector.activeTab") {
+            return JSON.stringify("Inspect");
+          }
+          if (key === "harnessInspector.selectedTool") {
+            return "codex";
+          }
+          return null;
+        }),
+        setItem: vi.fn(),
+        removeItem: vi.fn(),
+      },
+      configurable: true,
+    });
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/api/projects")) {
+        return {
+          ok: true,
+          json: async () => [
+            {
+              id: "p1",
+              root_path: "/tmp/demo",
+              display_path: "~/git/demo",
+              name: "demo",
+              indexed_at: "2026-03-29T10:00:00Z",
+              status: "ready",
+            },
+          ],
+        } as Response;
+      }
+      if (url.includes("/api/projects/p1/graph?tool=codex")) {
+        return {
+          ok: true,
+          json: async () => ({
+            project: {
+              id: "p1",
+              root_path: "/tmp/demo",
+              display_path: "~/git/demo",
+              name: "demo",
+              indexed_at: "2026-03-29T10:00:00Z",
+              status: "ready",
+            },
+            tool: {
+              id: "codex",
+              display_name: "Codex",
+              support_level: "full",
+            },
+            nodes: [
+              { id: "tool:codex", kind: "tool_context" },
+              {
+                id: "root-file",
+                kind: "artifact",
+                path: "/tmp/demo/docs/root.md",
+                display_path: "~/git/demo/docs/root.md",
+              },
+              {
+                id: "deep-file",
+                kind: "artifact",
+                path: "/tmp/demo/docs/nested/deep.md",
+                display_path: "~/git/demo/docs/nested/deep.md",
+              },
+            ],
+            edges: [],
+            verdicts: [
+              { entity_id: "root-file", states: ["effective"], why_included: [], why_excluded: [] },
+              { entity_id: "deep-file", states: ["effective"], why_included: [], why_excluded: [] },
+            ],
+          }),
+        } as Response;
+      }
+      if (url.includes("/api/projects/p1/inspect?tool=codex")) {
+        return {
+          ok: true,
+          json: async () => ({
+            entity: {
+              id: "root-file",
+              kind: "artifact",
+              path: "/tmp/demo/docs/root.md",
+              display_path: "~/git/demo/docs/root.md",
+            },
+            verdict: { states: ["effective"], why_included: [], why_excluded: [], shadowed_by: [] },
+            incoming_edges: [],
+            outgoing_edges: [],
+            related_activity: [],
+            viewer_content: "alpha",
+            edit: { editable: false, last_saved_backup_available: false },
+          }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => [],
+      } as Response;
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Select deep.md" })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Select deep.md" })).toBeInTheDocument();
+
+    await act(async () => {
+      screen.getByRole("button", { name: "Collapse all" }).click();
+    });
+    expect(screen.queryByRole("button", { name: "Select deep.md" })).not.toBeInTheDocument();
+
+    await act(async () => {
+      screen.getByRole("button", { name: "Expand all" }).click();
+    });
+    expect(screen.getByRole("button", { name: "Select deep.md" })).toBeInTheDocument();
+  });
+
+  it("clears stale inspect errors after a successful inspect fetch", async () => {
+    Object.defineProperty(window, "localStorage", {
+      value: {
+        getItem: vi.fn((key: string) => {
+          if (key === "harnessInspector.activeTab") {
+            return JSON.stringify("Inspect");
+          }
+          if (key === "harnessInspector.selectedTool") {
+            return "codex";
+          }
+          return null;
+        }),
+        setItem: vi.fn(),
+        removeItem: vi.fn(),
+      },
+      configurable: true,
+    });
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/api/projects")) {
+        return {
+          ok: true,
+          json: async () => [
+            {
+              id: "p1",
+              root_path: "/tmp/demo",
+              display_path: "~/git/demo",
+              name: "demo",
+              indexed_at: "2026-03-29T10:00:00Z",
+              status: "ready",
+            },
+          ],
+        } as Response;
+      }
+      if (url.includes("/api/projects/p1/graph?tool=codex")) {
+        return {
+          ok: true,
+          json: async () => ({
+            project: {
+              id: "p1",
+              root_path: "/tmp/demo",
+              display_path: "~/git/demo",
+              name: "demo",
+              indexed_at: "2026-03-29T10:00:00Z",
+              status: "ready",
+            },
+            tool: {
+              id: "codex",
+              display_name: "Codex",
+              support_level: "full",
+            },
+            nodes: [
+              { id: "tool:codex", kind: "tool_context" },
+              {
+                id: "missing-file",
+                kind: "artifact",
+                path: "/tmp/demo/docs/missing.md",
+                display_path: "~/git/demo/docs/missing.md",
+              },
+              {
+                id: "good-file",
+                kind: "artifact",
+                path: "/tmp/demo/docs/policy.md",
+                display_path: "~/git/demo/docs/policy.md",
+              },
+            ],
+            edges: [],
+            verdicts: [
+              { entity_id: "missing-file", states: ["effective"], why_included: [], why_excluded: [] },
+              {
+                entity_id: "good-file",
+                states: ["referenced_only"],
+                why_included: [],
+                why_excluded: [],
+              },
+            ],
+          }),
+        } as Response;
+      }
+      if (url.includes("node=missing-file")) {
+        return {
+          ok: false,
+          status: 404,
+          json: async () => ({ error: "node not found" }),
+        } as Response;
+      }
+      if (url.includes("node=good-file")) {
+        return {
+          ok: true,
+          json: async () => ({
+            entity: {
+              id: "good-file",
+              kind: "artifact",
+              path: "/tmp/demo/docs/policy.md",
+              display_path: "~/git/demo/docs/policy.md",
+            },
+            verdict: { states: ["effective"], why_included: [], why_excluded: [], shadowed_by: [] },
+            incoming_edges: [],
+            outgoing_edges: [],
+            related_activity: [],
+            viewer_content: "beta",
+            edit: { editable: false, last_saved_backup_available: false },
+          }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => [],
+      } as Response;
+    });
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(screen.getByText(/Inspect failed for ~\/git\/demo\/docs\/missing\.md/)).toBeInTheDocument(),
+    );
+
+    await act(async () => {
+      screen.getByRole("button", { name: "Select policy.md" }).click();
+    });
+
+    await waitFor(() => expect(screen.getByText("beta")).toBeInTheDocument());
+    expect(
+      screen.queryByText(/Inspect failed for ~\/git\/demo\/docs\/missing\.md/),
+    ).not.toBeInTheDocument();
   });
 });

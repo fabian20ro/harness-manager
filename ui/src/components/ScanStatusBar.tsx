@@ -3,10 +3,24 @@ import type { JobStatus } from "../lib/types";
 
 type ScanStatusBarProps = {
   job: JobStatus | null;
+  message?: string;
 };
 
-export function ScanStatusBar({ job }: ScanStatusBarProps) {
-  if (!job) return null;
+export function ScanStatusBar({ job, message }: ScanStatusBarProps) {
+  if (!job && !message) return null;
+
+  if (!job) {
+    return (
+      <div className="status-notice info" role="status" aria-live="polite" aria-label="Status">
+        <span className="status-notice-icon" aria-hidden="true">
+          i
+        </span>
+        <div className="status-notice-copy">
+          <span>{message}</span>
+        </div>
+      </div>
+    );
+  }
 
   const tone =
     job.status === "failed" ? "failed" : job.status === "completed" ? "completed" : "running";
@@ -20,16 +34,11 @@ export function ScanStatusBar({ job }: ScanStatusBarProps) {
       : null;
 
   return (
-    <div
-      className={`scan-status-bar ${tone}`}
-      role="status"
-      aria-live="polite"
-      aria-label="Scan status"
-    >
-      <span className="scan-status-spinner" aria-hidden="true">
+    <div className={`status-notice ${tone}`} role="status" aria-live="polite" aria-label="Status">
+      <span className="status-notice-icon" aria-hidden="true">
         {tone === "failed" ? "!" : tone === "completed" ? "✓" : "◌"}
       </span>
-      <div className="scan-status-copy">
+      <div className="status-notice-copy">
         <strong>{scopeLabel}</strong>
         <span>
           {job.message}

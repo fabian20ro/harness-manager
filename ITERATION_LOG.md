@@ -68,3 +68,12 @@
 ---
 
 <!-- new entries above this line, most recent first -->
+### [2026-03-29] Inspect tree directory expansion + inline status + inspect 404s
+
+**Context:** inspect tree stopped at directory refs like plugin `skills`; bottom reindex bar duplicated status and wasted space; stale `Inspect failed: 500` copy survived after later successful loads
+**Happened:** expanded scan-time directory reference targets into descendant file nodes while preserving the directory node for reasons/provenance; added transitive directory-to-file reference edges so effective status flows into nested files; changed inspect API missing-node handling from generic internal error to `404`; moved scan status to a single inline notice and removed fixed bottom status usage; added tree `Expand all` / `Collapse all`; cleared inspect error state on new/successful fetches and surfaced API error text with node-aware copy; added backend/frontend regressions; verified `cargo test`, `npm test -- --run`, `npm run build`
+**Outcome:** success
+**Insight:** directory references need to be modeled in the graph, not inferred in the tree alone; once descendant files are explicit nodes, viewer/reasons/error handling stay consistent with selection and status UX
+**Promoted:** no
+
+---

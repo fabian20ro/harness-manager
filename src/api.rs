@@ -274,7 +274,7 @@ async fn get_inspect(
 ) -> ApiResult<Json<InspectPayload>> {
     Ok(Json(
         inspect_payload(&state.store, &project_id, &query.tool, &query.node)
-            .map_err(ApiError::internal)?,
+            .map_err(ApiError::from_inspect_error)?,
     ))
 }
 
@@ -498,6 +498,15 @@ impl ApiError {
             Self::internal(error)
         }
     }
+
+    fn from_inspect_error(error: anyhow::Error) -> Self {
+        let message = error.to_string();
+        if message.contains("node not found") {
+            Self::not_found(&message)
+        } else {
+            Self::internal(error)
+        }
+    }
 }
 
 impl From<anyhow::Error> for ApiError {
@@ -509,5 +518,87 @@ impl From<anyhow::Error> for ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
         (self.status, Json(HashMap::from([("error", self.message)]))).into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+    use tempfile::TempDir;
+
+    use crate::{
+        config::AppConfig,
+        domain::{ProjectSummary, SurfaceState, ToolContext, ToolContextNode},
+        storage::Store,
+    };
+
+    use super::*;
+
+    #[tokio::test]
+    async fn get_inspect_returns_not_found_for_missing_node() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".codex")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        store.ensure_layout().expect("layout");
+
+        let project = ProjectSummary {
+            id: "demo".to_string(),
+            root_path: "/tmp/demo".to_string(),
+            display_path: "~/git/demo".to_string(),
+            name: "demo".to_string(),
+            indexed_at: Utc::now(),
+            status: "ready".to_string(),
+        };
+        let surface = SurfaceState {
+            project: project.clone(),
+            tool: ToolContext {
+                id: "codex".to_string(),
+                family: "codex".to_string(),
+                display_name: "Codex".to_string(),
+                catalog_version: "test".to_string(),
+                support_level: "full".to_string(),
+            },
+            nodes: vec![crate::domain::GraphNode::ToolContext(ToolContextNode {
+                id: "tool:codex".to_string(),
+                tool: ToolContext {
+                    id: "codex".to_string(),
+                    family: "codex".to_string(),
+                    display_name: "Codex".to_string(),
+                    catalog_version: "test".to_string(),
+                    support_level: "full".to_string(),
+                },
+            })],
+            edges: Vec::new(),
+            verdicts: Vec::new(),
+            last_indexed_at: Utc::now(),
+        };
+        store
+            .write_json(&store.tool_state_path(&project.id, "codex"), &surface)
+            .expect("tool state");
+
+        let state = AppState::new(config, store);
+        let error = get_inspect(
+            State(state),
+            Path(project.id.clone()),
+            Query(InspectQuery {
+                tool: "codex".to_string(),
+                node: "missing".to_string(),
+            }),
+        )
+        .await
+        .expect_err("missing node should fail");
+
+        assert_eq!(error.status, StatusCode::NOT_FOUND);
+        assert_eq!(error.message, "node not found");
     }
 }
