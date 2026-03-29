@@ -7,6 +7,16 @@
 
 ---
 
+### [2026-03-29] Reindex bottom progress bar + live SSE scan status
+
+**Context:** reindex UX weak; only static sidebar message; no live folder-level feedback during scan
+**Happened:** extended `JobStatus` with scan progress fields; added `JobRegistry.update`; threaded progress callbacks through repo discovery/inventory/surface scan; added throttled SSE job updates; moved scan status out of sidebar into fixed bottom bar; subscribed UI to `/api/events`; added backend/frontend regression tests
+**Outcome:** success
+**Insight:** long local scans need event-driven progress from the scanner itself, not optimistic frontend copy; path-change-triggered emits give useful freshness without spamming storage/SSE
+**Promoted:** no
+
+---
+
 ### [2026-03-29] Inspect write mode + stronger refs + real plugin discovery
 
 **Context:** close inspect gaps: `CLAUDE.md` docs-map refs, tree usage signal, actual local plugin installs, local edit/save/revert flow

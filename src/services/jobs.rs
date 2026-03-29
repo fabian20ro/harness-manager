@@ -17,6 +17,16 @@ pub struct JobRegistry {
     store: Store,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct JobUpdate {
+    pub status: Option<String>,
+    pub message: Option<String>,
+    pub phase: Option<Option<String>>,
+    pub current_path: Option<Option<String>>,
+    pub items_done: Option<Option<usize>>,
+    pub items_total: Option<Option<usize>>,
+}
+
 impl JobRegistry {
     pub fn new(store: Store) -> Self {
         let (sender, _) = broadcast::channel(128);
@@ -39,6 +49,10 @@ impl JobRegistry {
             created_at: Utc::now(),
             finished_at: None,
             message: message.to_string(),
+            phase: None,
+            current_path: None,
+            items_done: None,
+            items_total: None,
         };
         self.jobs
             .lock()
@@ -49,10 +63,25 @@ impl JobRegistry {
         Ok(job)
     }
 
-    pub fn finish(&self, mut job: JobStatus, status: &str, message: &str) -> Result<JobStatus> {
-        job.status = status.to_string();
-        job.message = message.to_string();
-        job.finished_at = Some(Utc::now());
+    pub fn update(&self, mut job: JobStatus, patch: JobUpdate) -> Result<JobStatus> {
+        if let Some(status) = patch.status {
+            job.status = status;
+        }
+        if let Some(message) = patch.message {
+            job.message = message;
+        }
+        if let Some(phase) = patch.phase {
+            job.phase = phase;
+        }
+        if let Some(current_path) = patch.current_path {
+            job.current_path = current_path;
+        }
+        if let Some(items_done) = patch.items_done {
+            job.items_done = items_done;
+        }
+        if let Some(items_total) = patch.items_total {
+            job.items_total = items_total;
+        }
         self.jobs
             .lock()
             .expect("job registry poisoned")
@@ -60,6 +89,18 @@ impl JobRegistry {
         self.store.write_json(&self.store.job_path(&job.id), &job)?;
         let _ = self.sender.send(job.clone());
         Ok(job)
+    }
+
+    pub fn finish(&self, mut job: JobStatus, status: &str, message: &str) -> Result<JobStatus> {
+        job.finished_at = Some(Utc::now());
+        self.update(
+            job,
+            JobUpdate {
+                status: Some(status.to_string()),
+                message: Some(message.to_string()),
+                ..JobUpdate::default()
+            },
+        )
     }
 
     pub fn get(&self, job_id: &str) -> Result<Option<JobStatus>> {
@@ -73,5 +114,42 @@ impl JobRegistry {
             return Ok(Some(job));
         }
         self.store.maybe_read_json(&self.store.job_path(job_id))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::TempDir;
+
+    use crate::storage::Store;
+
+    use super::{JobRegistry, JobUpdate};
+
+    #[test]
+    fn update_keeps_job_identity_and_running_state() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let job = registry.create("scan", "Scanning projects.").expect("job");
+
+        let updated = registry
+            .update(
+                job.clone(),
+                JobUpdate {
+                    message: Some("Scanning ~/git/demo".to_string()),
+                    phase: Some(Some("repo".to_string())),
+                    current_path: Some(Some("~/git/demo".to_string())),
+                    items_done: Some(Some(1)),
+                    items_total: Some(Some(3)),
+                    ..JobUpdate::default()
+                },
+            )
+            .expect("updated");
+
+        assert_eq!(updated.id, job.id);
+        assert_eq!(updated.status, "running");
+        assert_eq!(updated.phase.as_deref(), Some("repo"));
+        assert_eq!(updated.current_path.as_deref(), Some("~/git/demo"));
+        assert_eq!(updated.items_done, Some(1));
+        assert_eq!(updated.items_total, Some(3));
     }
 }

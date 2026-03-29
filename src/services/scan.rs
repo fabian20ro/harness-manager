@@ -47,6 +47,15 @@ struct PluginCandidate {
     disabled: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScanProgress {
+    pub phase: String,
+    pub message: String,
+    pub current_path: Option<String>,
+    pub items_done: Option<usize>,
+    pub items_total: Option<usize>,
+}
+
 pub fn refresh_catalogs(
     store: &Store,
     supplied_catalogs: Option<Vec<ToolCatalog>>,
@@ -80,6 +89,18 @@ pub fn scan_projects(
     store: &Store,
     roots: Option<Vec<String>>,
 ) -> Result<Vec<ProjectSummary>> {
+    scan_projects_with_progress(config, store, roots, |_| Ok(()))
+}
+
+pub fn scan_projects_with_progress<F>(
+    config: &AppConfig,
+    store: &Store,
+    roots: Option<Vec<String>>,
+    mut on_progress: F,
+) -> Result<Vec<ProjectSummary>>
+where
+    F: FnMut(ScanProgress) -> Result<()>,
+{
     store.ensure_layout()?;
     let catalogs = load_catalogs(store)?;
     let roots = roots
@@ -93,11 +114,33 @@ pub fn scan_projects(
         .into_iter()
         .map(PathBuf::from)
         .collect::<Vec<_>>();
-    let repo_roots = discover_repos(&roots, config.scan_max_depth);
+    let repo_roots = discover_repos_with_progress(
+        &roots,
+        config.scan_max_depth,
+        &config.home_dir,
+        &mut on_progress,
+    )?;
 
     let mut summaries = Vec::new();
-    for repo_root in repo_roots {
-        let summary = scan_project(config, store, &catalogs, &repo_root)?;
+    let total_repos = repo_roots.len();
+    for (index, repo_root) in repo_roots.iter().enumerate() {
+        let repo_display_path = display_path(repo_root, &config.home_dir);
+        on_progress(ScanProgress {
+            phase: "repo".to_string(),
+            message: format!("Indexing repo {repo_display_path}"),
+            current_path: Some(repo_display_path.clone()),
+            items_done: Some(index),
+            items_total: Some(total_repos),
+        })?;
+        let summary = scan_project(
+            config,
+            store,
+            &catalogs,
+            repo_root,
+            index + 1,
+            total_repos,
+            &mut on_progress,
+        )?;
         summaries.push(summary);
     }
     store.write_json(&store.projects_index_path(), &summaries)?;
@@ -134,6 +177,9 @@ fn scan_project(
     store: &Store,
     catalogs: &HashMap<String, ToolCatalog>,
     repo_root: &Path,
+    repo_index: usize,
+    total_repos: usize,
+    on_progress: &mut dyn FnMut(ScanProgress) -> Result<()>,
 ) -> Result<ProjectSummary> {
     let indexed_at = Utc::now();
     let project_id = stable_id("project", &repo_root.to_string_lossy());
@@ -152,13 +198,38 @@ fn scan_project(
 
     let project_dir = store.project_dir(&project_id);
     fs::create_dir_all(project_dir.join("tool-state"))?;
-    let inventory = collect_repo_files(repo_root, config.scan_max_depth);
+    let repo_display_path = display_path(repo_root, &config.home_dir);
+    let inventory = collect_repo_files_with_progress(
+        repo_root,
+        config.scan_max_depth,
+        &config.home_dir,
+        &mut |current_dir| {
+            on_progress(ScanProgress {
+                phase: "walk".to_string(),
+                message: format!("Scanning {}", current_dir),
+                current_path: Some(current_dir),
+                items_done: Some(repo_index),
+                items_total: Some(total_repos),
+            })
+        },
+    )?;
     store.write_json(&store.inventory_path(&project_id), &inventory)?;
 
     let mut union_nodes = BTreeMap::<String, GraphNode>::new();
     let mut union_edges = Vec::<GraphEdge>::new();
 
-    for catalog in catalogs.values() {
+    let total_surfaces = catalogs.len();
+    for (surface_index, catalog) in catalogs.values().enumerate() {
+        on_progress(ScanProgress {
+            phase: "surface".to_string(),
+            message: format!(
+                "Evaluating {} for {}",
+                catalog.display_name, repo_display_path
+            ),
+            current_path: Some(repo_display_path.clone()),
+            items_done: Some(surface_index + 1),
+            items_total: Some(total_surfaces),
+        })?;
         let state = build_surface_state(config, store, &summary, catalog, &inventory)?;
         for node in &state.nodes {
             union_nodes.insert(node.id().to_string(), node.clone());
@@ -1027,8 +1098,20 @@ fn upsert_verdict<'a>(
     verdicts.last_mut().expect("verdict inserted")
 }
 
+#[allow(dead_code)]
 fn collect_repo_files(root: &Path, max_depth: usize) -> Vec<String> {
-    WalkDir::new(root)
+    collect_repo_files_with_progress(root, max_depth, Path::new(""), &mut |_| Ok(()))
+        .unwrap_or_default()
+}
+
+fn collect_repo_files_with_progress(
+    root: &Path,
+    max_depth: usize,
+    home_dir: &Path,
+    on_progress: &mut dyn FnMut(String) -> Result<()>,
+) -> Result<Vec<String>> {
+    let mut files = Vec::new();
+    for entry in WalkDir::new(root)
         .max_depth(max_depth)
         .into_iter()
         .filter_map(Result::ok)
@@ -1037,24 +1120,54 @@ fn collect_repo_files(root: &Path, max_depth: usize) -> Vec<String> {
             let name = entry.file_name().to_string_lossy();
             !matches!(name.as_ref(), ".git" | "node_modules" | "target" | "dist")
         })
-        .filter(|entry| entry.file_type().is_file())
-        .filter_map(|entry| {
-            entry
-                .path()
-                .strip_prefix(root)
-                .ok()
-                .map(|path| path.to_path_buf())
-        })
-        .map(|path| path.to_string_lossy().to_string())
-        .collect()
+    {
+        if entry.file_type().is_dir() {
+            let display = if home_dir == Path::new("") {
+                entry.path().to_string_lossy().to_string()
+            } else {
+                display_path(entry.path(), home_dir)
+            };
+            on_progress(display)?;
+            continue;
+        }
+        if entry.file_type().is_file() {
+            if let Ok(path) = entry.path().strip_prefix(root) {
+                files.push(path.to_string_lossy().to_string());
+            }
+        }
+    }
+    Ok(files)
 }
 
+#[allow(dead_code)]
 fn discover_repos(roots: &[PathBuf], max_depth: usize) -> Vec<PathBuf> {
+    discover_repos_with_progress(roots, max_depth, Path::new(""), &mut |_| Ok(()))
+        .unwrap_or_default()
+}
+
+fn discover_repos_with_progress(
+    roots: &[PathBuf],
+    max_depth: usize,
+    home_dir: &Path,
+    on_progress: &mut dyn FnMut(ScanProgress) -> Result<()>,
+) -> Result<Vec<PathBuf>> {
     let mut repos = HashSet::new();
     for root in roots {
         if !root.exists() {
             continue;
         }
+        let root_display_path = if home_dir == Path::new("") {
+            root.to_string_lossy().to_string()
+        } else {
+            display_path(root, home_dir)
+        };
+        on_progress(ScanProgress {
+            phase: "root".to_string(),
+            message: format!("Scanning root {root_display_path}"),
+            current_path: Some(root_display_path.clone()),
+            items_done: None,
+            items_total: None,
+        })?;
         if root.join(".git").exists() {
             repos.insert(root.clone());
             continue;
@@ -1065,6 +1178,18 @@ fn discover_repos(roots: &[PathBuf], max_depth: usize) -> Vec<PathBuf> {
             .filter_map(Result::ok)
             .filter(|entry| entry.file_type().is_dir())
         {
+            let current_path = if home_dir == Path::new("") {
+                entry.path().to_string_lossy().to_string()
+            } else {
+                display_path(entry.path(), home_dir)
+            };
+            on_progress(ScanProgress {
+                phase: "root".to_string(),
+                message: format!("Scanning {current_path}"),
+                current_path: Some(current_path),
+                items_done: None,
+                items_total: None,
+            })?;
             if entry.path().join(".git").exists() {
                 repos.insert(entry.path().to_path_buf());
             }
@@ -1072,7 +1197,7 @@ fn discover_repos(roots: &[PathBuf], max_depth: usize) -> Vec<PathBuf> {
     }
     let mut repos = repos.into_iter().collect::<Vec<_>>();
     repos.sort();
-    repos
+    Ok(repos)
 }
 
 fn stable_id(prefix: &str, input: &str) -> String {
@@ -1256,7 +1381,10 @@ mod tests {
         storage::Store,
     };
 
-    use super::{build_surface_state, collect_repo_files, display_path, scan_projects};
+    use super::{
+        build_surface_state, collect_repo_files, display_path, scan_projects,
+        scan_projects_with_progress,
+    };
 
     #[test]
     fn scan_finds_repo_and_codex_artifacts() {
@@ -1293,6 +1421,44 @@ mod tests {
             .edges
             .iter()
             .any(|edge| edge.reason.contains("Instruction import found")));
+    }
+
+    #[test]
+    fn scan_reports_intermediate_progress() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let repo = home.join("git").join("demo");
+        fs::create_dir_all(repo.join(".git")).expect("git dir");
+        fs::create_dir_all(repo.join("docs")).expect("docs dir");
+        fs::write(repo.join("AGENTS.md"), "@./docs/policy.md").expect("agents");
+        fs::write(repo.join("docs").join("policy.md"), "ok").expect("policy");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".codex")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        let mut progress = Vec::new();
+
+        let projects = scan_projects_with_progress(&config, &store, None, |update| {
+            progress.push(update);
+            Ok(())
+        })
+        .expect("scan");
+
+        assert_eq!(projects.len(), 1);
+        assert!(progress.iter().any(|update| update.phase == "root"));
+        assert!(progress.iter().any(|update| update.phase == "repo"));
+        assert!(progress.iter().any(|update| update.phase == "walk"));
+        assert!(progress
+            .iter()
+            .any(|update| update.current_path.as_deref() == Some("~/git/demo/docs")));
     }
 
     #[test]

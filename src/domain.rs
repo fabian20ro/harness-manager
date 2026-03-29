@@ -340,6 +340,10 @@ pub struct JobStatus {
     pub created_at: DateTime<Utc>,
     pub finished_at: Option<DateTime<Utc>>,
     pub message: String,
+    pub phase: Option<String>,
+    pub current_path: Option<String>,
+    pub items_done: Option<usize>,
+    pub items_total: Option<usize>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

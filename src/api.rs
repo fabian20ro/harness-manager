@@ -1,4 +1,8 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use anyhow::Result;
 use axum::{
@@ -23,8 +27,8 @@ use crate::{
         activity::refresh_activity,
         docs::fetch_snapshot,
         edit::{inspect_payload, revert_last_save, save_edit},
-        jobs::JobRegistry,
-        scan::{load_catalogs, load_surface_state, refresh_catalogs, scan_projects},
+        jobs::{JobRegistry, JobUpdate},
+        scan::{load_catalogs, load_surface_state, refresh_catalogs, scan_projects_with_progress, ScanProgress},
     },
     storage::Store,
 };
@@ -130,11 +134,10 @@ async fn post_scan(
     Json(body): Json<Option<ScanBody>>,
 ) -> ApiResult<Json<JobStatus>> {
     let job = state.jobs.create("scan", "Scanning projects.")?;
-    let result = scan_projects(
-        &state.config,
-        &state.store,
-        body.and_then(|body| body.roots),
-    );
+    let mut emitter = ScanProgressEmitter::new(state.jobs.clone(), job.clone());
+    let result = scan_projects_with_progress(&state.config, &state.store, body.and_then(|body| body.roots), |progress| {
+        emitter.emit(progress)
+    });
     let job = match result {
         Ok(projects) => state.jobs.finish(
             job,
@@ -144,6 +147,53 @@ async fn post_scan(
         Err(error) => state.jobs.finish(job, "failed", &error.to_string())?,
     };
     Ok(Json(job))
+}
+
+struct ScanProgressEmitter {
+    jobs: JobRegistry,
+    job: JobStatus,
+    last_emit_at: Option<Instant>,
+    last_message: String,
+    last_path: Option<String>,
+}
+
+impl ScanProgressEmitter {
+    fn new(jobs: JobRegistry, job: JobStatus) -> Self {
+        Self {
+            jobs,
+            last_message: job.message.clone(),
+            last_path: job.current_path.clone(),
+            job,
+            last_emit_at: None,
+        }
+    }
+
+    fn emit(&mut self, progress: ScanProgress) -> Result<()> {
+        let path_changed = self.last_path != progress.current_path;
+        let message_changed = self.last_message != progress.message;
+        let throttled = self
+            .last_emit_at
+            .is_some_and(|instant| instant.elapsed() < Duration::from_millis(250));
+        if !path_changed && !message_changed && throttled {
+            return Ok(());
+        }
+
+        self.job = self.jobs.update(
+            self.job.clone(),
+            JobUpdate {
+                message: Some(progress.message.clone()),
+                phase: Some(Some(progress.phase)),
+                current_path: Some(progress.current_path.clone()),
+                items_done: Some(progress.items_done),
+                items_total: Some(progress.items_total),
+                ..JobUpdate::default()
+            },
+        )?;
+        self.last_emit_at = Some(Instant::now());
+        self.last_message = progress.message;
+        self.last_path = progress.current_path;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Deserialize)]

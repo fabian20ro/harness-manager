@@ -9,7 +9,6 @@ describe("SidebarNav", () => {
       <SidebarNav
         activeTab="Projects"
         collapsed={false}
-        statusMessage="Ready."
         onSelectTab={() => {}}
         onToggleCollapse={() => {}}
         onReindex={() => {}}
@@ -28,7 +27,6 @@ describe("SidebarNav", () => {
       <SidebarNav
         activeTab="Projects"
         collapsed={false}
-        statusMessage="Ready."
         onSelectTab={() => {}}
         onToggleCollapse={onToggleCollapse}
         onReindex={() => {}}
@@ -44,7 +42,6 @@ describe("SidebarNav", () => {
       <SidebarNav
         activeTab="Projects"
         collapsed
-        statusMessage="Ready."
         onSelectTab={() => {}}
         onToggleCollapse={() => {}}
         onReindex={() => {}}

@@ -3,7 +3,6 @@ import { MENU_ITEMS, type AppTab } from "../lib/inspect";
 type SidebarNavProps = {
   activeTab: AppTab;
   collapsed: boolean;
-  statusMessage: string;
   onSelectTab: (tab: AppTab) => void;
   onToggleCollapse: () => void;
   onReindex: () => void;
@@ -12,7 +11,6 @@ type SidebarNavProps = {
 export function SidebarNav({
   activeTab,
   collapsed,
-  statusMessage,
   onSelectTab,
   onToggleCollapse,
   onReindex,
@@ -52,7 +50,6 @@ export function SidebarNav({
         <span className="tab-emoji">🔁</span>
         {!collapsed ? <span>Reindex</span> : null}
       </button>
-      {!collapsed ? <p className="status">{statusMessage}</p> : null}
     </aside>
   );
 }

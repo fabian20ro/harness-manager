@@ -61,3 +61,16 @@ export type SaveInspectResponse = {
   graph: SurfaceState;
   status_message: string;
 };
+
+export type JobStatus = {
+  id: string;
+  kind: string;
+  status: string;
+  created_at: string;
+  finished_at?: string | null;
+  message: string;
+  phase?: string | null;
+  current_path?: string | null;
+  items_done?: number | null;
+  items_total?: number | null;
+};

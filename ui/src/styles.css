@@ -59,8 +59,7 @@ select {
   padding-inline: 8px;
 }
 
-.brand span,
-.status {
+.brand span {
   color: var(--muted);
   font-size: 0.9rem;
 }
@@ -161,6 +160,7 @@ select {
 
 .workspace {
   padding: 24px;
+  padding-bottom: 112px;
   min-width: 0;
 }
 
@@ -422,6 +422,75 @@ select {
   background: rgba(31, 111, 178, 0.12);
 }
 
+.scan-status-bar {
+  position: fixed;
+  left: 208px;
+  right: 24px;
+  bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(22, 35, 59, 0.92);
+  color: #f4f0e6;
+  box-shadow: 0 18px 48px rgba(22, 35, 59, 0.24);
+  z-index: 20;
+}
+
+.shell-collapsed .scan-status-bar {
+  left: 88px;
+}
+
+.scan-status-bar.completed {
+  background: rgba(31, 86, 53, 0.94);
+}
+
+.scan-status-bar.failed {
+  background: rgba(120, 32, 32, 0.95);
+}
+
+.scan-status-spinner {
+  width: 1.1rem;
+  text-align: center;
+  font-size: 0.92rem;
+}
+
+.scan-status-bar.running .scan-status-spinner {
+  animation: scan-pulse 1s ease-in-out infinite;
+}
+
+.scan-status-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.scan-status-copy strong,
+.scan-status-copy span {
+  overflow-wrap: anywhere;
+}
+
+.scan-status-copy strong {
+  font-size: 0.9rem;
+}
+
+.scan-status-copy span {
+  color: rgba(244, 240, 230, 0.78);
+  font-size: 0.78rem;
+}
+
+@keyframes scan-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .docs-form input {
   flex: 1;
 }
@@ -465,5 +534,12 @@ select {
 
   .toolbar-api-group {
     width: 100%;
+  }
+
+  .scan-status-bar,
+  .shell-collapsed .scan-status-bar {
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
   }
 }

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { HelperCommand } from "./components/HelperCommand";
 import { InspectTree } from "./components/InspectTree";
+import { ScanStatusBar } from "./components/ScanStatusBar";
 import { SidebarNav } from "./components/SidebarNav";
 import { ViewerPane } from "./components/ViewerPane";
 import {
@@ -17,12 +18,14 @@ import {
 import type {
   GraphNodeRecord,
   InspectPayload,
+  JobStatus,
   ProjectSummary,
   SaveInspectResponse,
   SurfaceState,
 } from "./lib/types";
 
 const BUILD_CHECK_MS = 180_000;
+const SCAN_STATUS_LINGER_MS = 4_000;
 const CURRENT_BUILD_ID = import.meta.env.VITE_BUILD_ID ?? "dev";
 const BUILD_META_PATH = `${import.meta.env.BASE_URL}build-meta.json`;
 const STORAGE_PREFIX = "harnessInspector";
@@ -77,8 +80,10 @@ export function App() {
   const [inspect, setInspect] = useState<InspectPayload | null>(null);
   const [docUrl, setDocUrl] = useState("https://developers.openai.com/codex/plugins");
   const [statusMessage, setStatusMessage] = useState("Ready.");
+  const [scanJob, setScanJob] = useState<JobStatus | null>(null);
   const [apiBase, setApiBase] = useState(defaultApiBase);
   const [staleBuildMessage, setStaleBuildMessage] = useState("");
+  const clearScanJobTimer = useRef<number | null>(null);
 
   async function loadProjects() {
     const response = await fetch(apiUrl(apiBase, "/api/projects"));
@@ -93,14 +98,18 @@ export function App() {
   }
 
   async function runScan() {
-    setStatusMessage("Scanning local roots.");
-    await fetch(apiUrl(apiBase, "/api/scan"), {
+    setStatusMessage("Starting reindex.");
+    const response = await fetch(apiUrl(apiBase, "/api/scan"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
     });
+    if (!response.ok) {
+      throw new Error(`Scan failed: ${response.status}`);
+    }
+    const payload = (await response.json()) as JobStatus;
+    setStatusMessage(payload.message);
     await loadProjects();
-    setStatusMessage("Scan complete.");
   }
 
   async function copyHelperCommand() {
@@ -180,6 +189,45 @@ export function App() {
 
   useEffect(() => {
     loadProjects().catch((error) => setStatusMessage(String(error)));
+  }, [apiBase]);
+
+  useEffect(() => {
+    if (typeof window.EventSource === "undefined") {
+      return;
+    }
+
+    const source = new window.EventSource(apiUrl(apiBase, "/api/events"));
+    source.onmessage = (event) => {
+      const job = JSON.parse(event.data) as JobStatus;
+      if (job.kind === "scan") {
+        setScanJob(job);
+        setStatusMessage(job.message);
+        if (clearScanJobTimer.current) {
+          window.clearTimeout(clearScanJobTimer.current);
+          clearScanJobTimer.current = null;
+        }
+        if (job.status !== "running") {
+          clearScanJobTimer.current = window.setTimeout(() => {
+            setScanJob((current) => (current?.id === job.id ? null : current));
+          }, SCAN_STATUS_LINGER_MS);
+        }
+        return;
+      }
+      if (job.status !== "running") {
+        setStatusMessage(job.message);
+      }
+    };
+    source.onerror = () => {
+      setStatusMessage("Job event stream unavailable.");
+    };
+
+    return () => {
+      source.close();
+      if (clearScanJobTimer.current) {
+        window.clearTimeout(clearScanJobTimer.current);
+        clearScanJobTimer.current = null;
+      }
+    };
   }, [apiBase]);
 
   useEffect(() => {
@@ -336,10 +384,9 @@ export function App() {
       <SidebarNav
         activeTab={activeTab}
         collapsed={sidebarCollapsed}
-        statusMessage={statusMessage}
         onSelectTab={setActiveTab}
         onToggleCollapse={() => setSidebarCollapsed((value) => !value)}
-        onReindex={runScan}
+        onReindex={() => void runScan().catch((error) => setStatusMessage(String(error)))}
       />
 
       <main className="workspace">
@@ -489,6 +536,7 @@ export function App() {
           </section>
         )}
       </main>
+      <ScanStatusBar job={scanJob} />
     </div>
   );
 }
