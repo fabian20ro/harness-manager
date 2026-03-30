@@ -1518,21 +1518,70 @@ fn collect_reference_edges(
                 });
             }
             if !hit.broken && hit.resolved_path.is_dir() {
-                materialize_referenced_directory(
-                    &target_id,
-                    &hit.resolved_path,
-                    &target_display_path,
-                    nodes,
-                    &mut existing_path_to_id,
-                    &mut artifact_nodes,
-                    &mut collection,
-                    indexed_at,
-                    &config.home_dir,
-                )?;
+                if matches!(artifact.artifact_type, ArtifactType::PluginManifest) {
+                    link_existing_directory_descendants(
+                        &target_id,
+                        &hit.resolved_path,
+                        &target_display_path,
+                        nodes,
+                        &mut collection,
+                    );
+                } else {
+                    materialize_referenced_directory(
+                        &target_id,
+                        &hit.resolved_path,
+                        &target_display_path,
+                        nodes,
+                        &mut existing_path_to_id,
+                        &mut artifact_nodes,
+                        &mut collection,
+                        indexed_at,
+                        &config.home_dir,
+                    )?;
+                }
             }
         }
     }
     Ok(collection)
+}
+
+fn link_existing_directory_descendants(
+    directory_id: &str,
+    directory_path: &Path,
+    directory_display_path: &str,
+    nodes: &BTreeMap<String, GraphNode>,
+    collection: &mut ReferenceCollection,
+) {
+    let mut descendants = nodes
+        .values()
+        .filter_map(artifact_node_from_graph)
+        .filter(|artifact| {
+            let artifact_path = Path::new(&artifact.path);
+            artifact_path.is_file() && artifact_path.starts_with(directory_path)
+        })
+        .map(|artifact| artifact.id)
+        .collect::<Vec<_>>();
+    descendants.sort();
+    descendants.dedup();
+
+    for descendant_id in descendants {
+        let reason = format!(
+            "Contained in referenced directory: {}.",
+            directory_display_path
+        );
+        collection.edges.push(GraphEdge {
+            from: directory_id.to_string(),
+            to: descendant_id.clone(),
+            edge_type: EdgeType::References,
+            hardness: "hard".to_string(),
+            reason: reason.clone(),
+        });
+        collection.promotable_edges.push(PromotableEdge {
+            from: directory_id.to_string(),
+            to: descendant_id,
+            reason,
+        });
+    }
 }
 
 fn materialize_referenced_directory(
@@ -3355,7 +3404,7 @@ mod tests {
     }
 
     #[test]
-    fn codex_directory_references_expand_to_descendant_files() {
+    fn codex_directory_references_link_to_existing_skill_artifacts_without_directory_blowup() {
         let temp = TempDir::new().expect("tempdir");
         let home = temp.path().join("home");
         let repo = home.join("git").join("demo");
@@ -3380,6 +3429,11 @@ mod tests {
             "---\nname: Root Skill\ndescription: Root description\n---\n",
         )
         .expect("root skill");
+        fs::write(
+            plugin_root.join("skills").join("root").join("notes.md"),
+            "supporting notes\n",
+        )
+        .expect("notes");
         fs::write(
             plugin_root
                 .join("skills")
@@ -3451,6 +3505,16 @@ mod tests {
         assert!(state.nodes.iter().any(|node| matches!(
             node,
             GraphNode::Artifact(artifact) if artifact.path == hooks_file
+        )));
+        assert!(!state.nodes.iter().any(|node| matches!(
+            node,
+            GraphNode::Artifact(artifact)
+                if artifact.path
+                    == plugin_root
+                        .join("skills")
+                        .join("root")
+                        .join("notes.md")
+                        .to_string_lossy()
         )));
 
         let root_skill_id = stable_id("plugin_artifact", &root_skill);

@@ -7,6 +7,16 @@
 
 ---
 
+### [2026-03-30] Plugin manifest directory expansion caused scan blow-up
+
+**Context:** after memoizing plugin candidate discovery, global reindex still appeared frozen on `Discovering Codex plugins for ~/git/ComfyUI-Chibi-Nodes`; a live process sample showed the real hot path was `collect_reference_edges -> materialize_referenced_directory`, with physical footprint around 1.1 GB and peak around 10.9 GB during scan
+**Happened:** reproduced the scan locally against the real home/plugin roots; confirmed the visible Codex line was stale and the worker was CPU-bound inside plugin-manifest directory expansion; changed plugin-manifest directory refs to link only already-modeled descendant artifacts instead of recursively materializing every file under referenced directories like `skills/`; kept recursive directory expansion for non-plugin-manifest refs; updated the Codex directory-reference regression to assert existing skill artifacts stay linked while unrelated files inside the directory are not materialized; verified `cargo test`; reran a real local `/api/scan` and confirmed progress advanced past `ComfyUI-Chibi-Nodes` onto later projects instead of pinning there
+**Outcome:** success
+**Insight:** once plugin components are modeled explicitly, manifest directory refs should attach to those existing component nodes, not trigger generic recursive file expansion; otherwise plugin bundles create graph/memory blow-ups that look like frozen scans
+**Promoted:** no
+
+---
+
 ### [2026-03-30] Memoized plugin discovery for global reindex
 
 **Context:** global reindex could appear frozen on `Evaluating Codex ...` because plugin-enabled surfaces re-walked large global Codex/Claude plugin trees inside every `build_surface_state()` call, repeating expensive filesystem discovery for each project/surface
