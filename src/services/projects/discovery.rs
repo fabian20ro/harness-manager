@@ -220,7 +220,7 @@ fn is_hidden_plugin_manifest(path: &Path) -> bool {
             path.parent()
                 .and_then(|parent| parent.file_name())
                 .and_then(|name| name.to_str()),
-            Some(".codex-plugin" | ".claude-plugin")
+            Some(".codex-plugin" | ".claude-plugin" | ".gemini-plugin" | ".pi-plugin")
         )
 }
 
@@ -229,6 +229,8 @@ fn nearest_plugin_root(start: &Path, scan_root: &Path) -> PathBuf {
     while let Some(path) = current {
         if path.join(".codex-plugin").join("plugin.json").exists()
             || path.join(".claude-plugin").join("plugin.json").exists()
+            || path.join(".gemini-plugin").join("plugin.json").exists()
+            || path.join(".pi-plugin").join("plugin.json").exists()
             || path.join(".mcp.json").exists()
         {
             return path.to_path_buf();

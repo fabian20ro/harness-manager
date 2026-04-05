@@ -324,6 +324,9 @@ fn plugin_system_display_name(system: &str) -> &str {
     match system {
         "codex" => "Codex",
         "claude" => "Claude",
+        "gemini" => "Gemini",
+        "pi" => "Pi",
+        "opencode" => "OpenCode",
         _ => system,
     }
 }

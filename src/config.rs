@@ -23,6 +23,8 @@ impl AppConfig {
             home_dir.join(".codex"),
             home_dir.join(".claude"),
             home_dir.join(".config").join("claude"),
+            home_dir.join(".gemini"),
+            home_dir.join(".pi"),
             home_dir.join(".config").join("opencode"),
             home_dir.join(".config").join("antigravity"),
             home_dir.join(".github"),
