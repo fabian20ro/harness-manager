@@ -38,8 +38,12 @@ describe("InspectTree", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: /AGENTS.md/ })).toHaveClass("usage-used");
-    expect(screen.getByRole("button", { name: /missing.md/ })).toHaveClass("usage-broken");
+    // Testing the inner element that actually has the class
+    const agentsRow = screen.getByRole("button", { name: /AGENTS.md/ });
+    expect(agentsRow.querySelector('.usage-used')).toBeInTheDocument();
+
+    const missingRow = screen.getByRole("button", { name: /missing.md/ });
+    expect(missingRow.querySelector('.usage-broken')).toBeInTheDocument();
   });
 
   it("toggles directory branches and preserves leaf selection", () => {
