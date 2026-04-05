@@ -67,6 +67,15 @@ function TreeBranch({
         className={`tree-node ${selected ? 'active' : ''}`} 
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         onClick={handleRowClick}
+        role="button"
+        tabIndex={0}
+        aria-label={`${hasChildren ? (isExpanded ? "Collapse" : "Expand") : "Select"} ${node.label}`}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleRowClick();
+          }
+        }}
       >
         <span 
           style={{ 
@@ -82,10 +91,11 @@ function TreeBranch({
               onToggleExpand(node.key);
             }
           }}
+          aria-hidden="true"
         >
           {hasChildren ? (isExpanded ? "▾" : "▸") : ""}
         </span>
-        <span className={`tree-node-indicator usage-${node.usageState}`} style={{ fontSize: '0.6rem' }}>
+        <span className={`tree-node-indicator usage-${node.usageState}`} style={{ fontSize: '0.6rem' }} aria-hidden="true">
           {node.usageState === "used" ? "●" : node.usageState === "broken" ? "!" : node.usageState === "proposed" ? "◩" : "○"}
         </span>
         <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>

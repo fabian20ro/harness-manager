@@ -356,12 +356,12 @@ describe("Graph Inspection", () => {
     expect(screen.getByRole("button", { name: "Select deep.md" })).toBeInTheDocument();
 
     await act(async () => {
-      screen.getByRole("button", { name: "Collapse all" }).click();
+      screen.getByRole("button", { name: "Collapse" }).click();
     });
     expect(screen.queryByRole("button", { name: "Select deep.md" })).not.toBeInTheDocument();
 
     await act(async () => {
-      screen.getByRole("button", { name: "Expand all" }).click();
+      screen.getByRole("button", { name: "Expand" }).click();
     });
     expect(screen.getByRole("button", { name: "Select deep.md" })).toBeInTheDocument();
   });

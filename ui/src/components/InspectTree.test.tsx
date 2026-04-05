@@ -38,8 +38,8 @@ describe("InspectTree", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: /AGENTS.md/ })).toHaveClass("usage-used");
-    expect(screen.getByRole("button", { name: /missing.md/ })).toHaveClass("usage-broken");
+    expect(screen.getByText("●")).toHaveClass("usage-used");
+    expect(screen.getByText("!")).toHaveClass("usage-broken");
   });
 
   it("toggles directory branches and preserves leaf selection", () => {
