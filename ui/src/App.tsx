@@ -24,7 +24,7 @@ export function App() {
       <SidebarNav
         activeTab={controller.activeTab}
         collapsed={controller.sidebarCollapsed}
-        globalReindexLabel={controller.isGlobalScanRunning ? "Reindexing all..." : "Reindex all"}
+        globalReindexLabel={controller.isGlobalScanRunning ? "Reindexing..." : "Reindex all"}
         isGlobalReindexRunning={controller.isGlobalScanRunning}
         onSelectTab={controller.setActiveTab}
         onToggleCollapse={() => controller.setSidebarCollapsed((value) => !value)}
@@ -47,131 +47,165 @@ export function App() {
         />
 
         {controller.staleBuildMessage ? (
-          <p className="stale-banner">{controller.staleBuildMessage}</p>
+          <div className="stale-banner" style={{ margin: '0 24px 16px', marginTop: '16px' }}>
+            {controller.staleBuildMessage}
+          </div>
         ) : null}
-        <ScanStatusBar job={controller.scanJob} message={inlineStatusMessage} />
+        
+        <div style={{ padding: inspectMode ? '0' : '24px' }}>
+          {!inspectMode && (
+            <ScanStatusBar job={controller.scanJob} message={inlineStatusMessage} graph={controller.graph} />
+          )}
 
-        {controller.activeTab === "Projects" && (
-          <section className="panel">
-            <h2>Projects</h2>
-            <div className="project-list">
-              {controller.projects.map((project) => (
-                <button
-                  key={project.id}
-                  className={
-                    project.id === controller.selectedProject ? "project-card active" : "project-card"
-                  }
-                  onClick={() => controller.setSelectedProject(project.id)}
+          {controller.activeTab === "Projects" && (
+            <section>
+              <h1 style={{ fontSize: '1.25rem', marginBottom: '20px' }}>Projects</h1>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
+                {controller.projects.map((project) => (
+                  <button
+                    key={project.id}
+                    className={
+                      project.id === controller.selectedProject ? "project-card active" : "project-card"
+                    }
+                    onClick={() => controller.setSelectedProject(project.id)}
+                  >
+                    <strong style={{ fontSize: '1rem' }}>{project.name}</strong>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>{projectKindLabel(project)}</span>
+                    <span style={{ fontSize: '0.8rem', opacity: 0.8 }}>{formatDisplayPath(project.display_path)}</span>
+                    {project.discovery_reason ? <span style={{ fontSize: '0.75rem', fontStyle: 'italic' }}>{project.discovery_reason}</span> : null}
+                    <em style={{ fontSize: '0.7rem', marginTop: '4px' }}>{new Date(project.indexed_at).toLocaleString()}</em>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {controller.activeTab === "Docs" && (
+            <section className="panel">
+              <h2>Documentation Snapshot</h2>
+              <div className="docs-form" style={{ marginTop: '16px' }}>
+                <input
+                  value={controller.docUrl}
+                  onChange={(event) => controller.setDocUrl(event.target.value)}
+                  placeholder="https://docs.example.com"
+                />
+                <button 
+                  className="toolbar-reindex"
+                  onClick={() => void controller.fetchDocs()}
                 >
-                  <strong>{project.name}</strong>
-                  <span>{projectKindLabel(project)}</span>
-                  <span>{formatDisplayPath(project.display_path)}</span>
-                  {project.discovery_reason ? <span>{project.discovery_reason}</span> : null}
-                  <em>{new Date(project.indexed_at).toLocaleString()}</em>
+                  Fetch snapshot
                 </button>
-              ))}
-            </div>
-          </section>
-        )}
+              </div>
+              <p style={{ marginTop: '12px', fontSize: '0.85rem', color: 'var(--muted)' }}>
+                Snapshot binds to the currently selected project and tool context.
+              </p>
+            </section>
+          )}
 
-        {controller.activeTab === "Docs" && (
-          <section className="panel">
-            <h2>Docs</h2>
-            <div className="docs-form">
-              <input
-                value={controller.docUrl}
-                onChange={(event) => controller.setDocUrl(event.target.value)}
-              />
-              <button onClick={() => void controller.fetchDocs()}>Fetch snapshot</button>
-            </div>
-            <p>Snapshot binds to selected project and tool context.</p>
-          </section>
-        )}
+          {controller.activeTab === "Tool" && (
+            <section className="panel">
+              <h2>Active Tool Context</h2>
+              <div style={{ marginTop: '16px', display: 'grid', gap: '8px' }}>
+                <p><strong>Tool:</strong> {LABELS[controller.selectedTool as keyof typeof LABELS] ?? controller.selectedTool}</p>
+                <p><strong>Project:</strong> {controller.selectedProjectMeta?.display_path ?? "No project selected"}</p>
+              </div>
+            </section>
+          )}
 
-        {controller.activeTab === "Tool" && (
-          <section className="panel">
-            <h2>Tool Context</h2>
-            <p>{LABELS[controller.selectedTool as keyof typeof LABELS] ?? controller.selectedTool}</p>
-            <p>Project: {controller.selectedProjectMeta?.display_path ?? "No project selected"}</p>
-          </section>
-        )}
-
-        {inspectMode && (
-          <section className="inspect-grid">
-            <div className="panel inspect-panel inspect-panel-tree">
-              <div className="inspect-panel-header">
-                <h2>Effective Context Tree</h2>
-                <div className="inspect-panel-actions">
-                  <button
-                    className="panel-action-button"
-                    onClick={() => controller.expandAllTree()}
-                    disabled={!hasExpandableTree || treeFullyExpanded}
-                  >
-                    Expand all
-                  </button>
-                  <button
-                    className="panel-action-button"
-                    onClick={() => controller.collapseAllTree()}
-                    disabled={!hasExpandableTree || treeFullyCollapsed}
-                  >
-                    Collapse all
-                  </button>
+          {inspectMode && (
+            <div className="inspect-grid">
+              <div className="inspect-panel">
+                <div className="inspect-panel-header">
+                  <h2>Context Tree</h2>
+                  <div className="inspect-panel-actions">
+                    <button
+                      className="panel-action-button"
+                      onClick={() => controller.expandAllTree()}
+                      disabled={!hasExpandableTree || treeFullyExpanded}
+                    >
+                      Expand
+                    </button>
+                    <button
+                      className="panel-action-button"
+                      onClick={() => controller.collapseAllTree()}
+                      disabled={!hasExpandableTree || treeFullyCollapsed}
+                    >
+                      Collapse
+                    </button>
+                  </div>
+                </div>
+                <div className="inspect-panel-body">
+                  <InspectTree
+                    expandedKeys={controller.treeExpandedKeys}
+                    tree={controller.tree}
+                    selectedNodeId={controller.selectedNode}
+                    onSelect={controller.setSelectedNode}
+                    onToggleExpand={controller.toggleExpandedKey}
+                  />
                 </div>
               </div>
-              <div className="inspect-panel-body">
-                <InspectTree
-                  expandedKeys={controller.treeExpandedKeys}
-                  tree={controller.tree}
-                  selectedNodeId={controller.selectedNode}
-                  onSelect={controller.setSelectedNode}
-                  onToggleExpand={controller.toggleExpandedKey}
-                />
+
+              <div className="inspect-panel">
+                <div className="inspect-panel-header">
+                  <h2>{controller.currentNode ? getNodeLabel(controller.currentNode) : "Viewer"}</h2>
+                  {controller.inspectStatusMessage && (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--warning)' }}>{controller.inspectStatusMessage}</span>
+                  )}
+                </div>
+                <div className="inspect-panel-body" style={{ padding: 0 }}>
+                  <ViewerPane
+                    nodeKey={controller.selectedNode}
+                    content={controller.inspect?.viewer_content}
+                    metadata={controller.currentNode?.metadata as Record<string, unknown> | undefined}
+                    editable={controller.inspect?.edit.editable}
+                    versionToken={controller.inspect?.edit.version_token}
+                    lastSavedBackupAvailable={controller.inspect?.edit.last_saved_backup_available}
+                    onSave={controller.saveInspectContent}
+                    onReload={controller.reloadInspectNode}
+                    onRevert={controller.revertInspectSave}
+                  />
+                </div>
+              </div>
+
+              <div className="inspect-panel">
+                <div className="inspect-panel-header">
+                  <h2>Reasoning & Metadata</h2>
+                </div>
+                <div className="inspect-panel-body">
+                  <InspectReasonsPane
+                    currentNode={controller.currentNode}
+                    inspect={controller.inspect}
+                  />
+                </div>
               </div>
             </div>
+          )}
 
-            <div className="panel inspect-panel inspect-panel-viewer">
-              <h2>{controller.currentNode ? getNodeLabel(controller.currentNode) : "Viewer"}</h2>
-              <div className="inspect-panel-body">
-                <ViewerPane
-                  nodeKey={controller.selectedNode}
-                  content={controller.inspect?.viewer_content}
-                  editable={controller.inspect?.edit.editable}
-                  versionToken={controller.inspect?.edit.version_token}
-                  lastSavedBackupAvailable={controller.inspect?.edit.last_saved_backup_available}
-                  onSave={controller.saveInspectContent}
-                  onReload={controller.reloadInspectNode}
-                  onRevert={controller.revertInspectSave}
-                />
+          {controller.activeTab === "Activity" && (
+            <section className="panel">
+              <div className="activity-header">
+                <h2>Recent Activity</h2>
+                <button 
+                  className="panel-action-button"
+                  onClick={() => void controller.refreshActivity()}
+                >
+                  Refresh
+                </button>
               </div>
-            </div>
-
-            <div className="panel inspect-panel inspect-panel-reasons">
-              <h2>Reasons</h2>
-              <div className="inspect-panel-body">
-                <InspectReasonsPane
-                  currentNode={controller.currentNode}
-                  inspect={controller.inspect}
-                />
-              </div>
-            </div>
-          </section>
-        )}
-
-        {controller.activeTab === "Activity" && (
-          <section className="panel">
-            <div className="activity-header">
-              <h2>Activity</h2>
-              <button onClick={() => void controller.refreshActivity()}>Refresh observed</button>
-            </div>
-            <ul>
-              {controller.inspect?.related_activity.map((item) => (
-                <li key={item.payload_ref}>
-                  {item.payload_ref} ({item.confidence.toFixed(2)})
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
+              <ul style={{ marginTop: '16px', display: 'grid', gap: '8px', listStyle: 'none', padding: 0 }}>
+                {controller.inspect?.related_activity.map((item) => (
+                  <li key={item.payload_ref} style={{ padding: '8px 12px', background: 'var(--bg)', borderRadius: '6px', fontSize: '0.85rem' }}>
+                    <code style={{ color: 'var(--primary)' }}>{item.payload_ref}</code> 
+                    <span style={{ marginLeft: '12px', color: 'var(--muted)' }}>Confidence: {item.confidence.toFixed(2)}</span>
+                  </li>
+                ))}
+                {(!controller.inspect?.related_activity || controller.inspect.related_activity.length === 0) && (
+                  <li style={{ color: 'var(--muted)', fontStyle: 'italic' }}>No recent activity observed.</li>
+                )}
+              </ul>
+            </section>
+          )}
+        </div>
       </main>
     </div>
   );

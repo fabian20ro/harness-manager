@@ -7,6 +7,7 @@ use serde_json::Value as JsonValue;
 pub enum NodeState {
     Declared,
     Effective,
+    Proposed,
     Observed,
     ReferencedOnly,
     Shadowed,
@@ -200,7 +201,10 @@ pub struct ArtifactNode {
     pub last_indexed_at: DateTime<Utc>,
     pub hash: String,
     pub mtime: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub byte_size: u64,
     pub reason: String,
+    pub metadata: Option<JsonValue>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

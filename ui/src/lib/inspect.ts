@@ -41,7 +41,7 @@ export type InspectTreeNode = {
   path: string;
   children: InspectTreeNode[];
   states: string[];
-  usageState: "used" | "unused" | "broken";
+  usageState: "used" | "unused" | "broken" | "proposed";
   score: number;
   isDirectory: boolean;
 };
@@ -206,7 +206,10 @@ function finalizeTree(node: TrieNode): InspectTreeNode {
         : ownUsageState === "broken" ||
             (!node.states.length && childUsageStates.includes("broken"))
           ? "broken"
-          : "unused",
+          : ownUsageState === "proposed" ||
+              (!node.states.length && childUsageStates.includes("proposed"))
+            ? "proposed"
+            : "unused",
     score: Math.min(scoreStates(node.states), ...children.map((child) => child.score)),
     isDirectory: children.length > 0,
   };
@@ -250,12 +253,34 @@ function scoreStates(states: string[]) {
   return 4;
 }
 
-export function usageStateForStates(states: string[]): "used" | "unused" | "broken" {
+export function usageStateForStates(states: string[]): "used" | "unused" | "broken" | "proposed" {
   if (states.includes("broken_reference") || states.includes("unresolved")) {
     return "broken";
   }
   if (states.includes("effective") || states.includes("observed")) {
     return "used";
   }
+  if (states.includes("proposed")) {
+    return "proposed";
+  }
   return "unused";
+}
+
+export function calculateContextCost(graph: SurfaceState | null): { bytes: number; warning: boolean } {
+  if (!graph) return { bytes: 0, warning: false };
+
+  const bytes = graph.nodes.reduce((acc, node) => {
+    if (typeof node.byte_size === "number") {
+      const usage = usageStateForStates(
+        graph.verdicts.find((v) => v.entity_id === node.id)?.states ?? []
+      );
+      if (usage === "used" || usage === "proposed") {
+        return acc + node.byte_size;
+      }
+    }
+    return acc;
+  }, 0);
+
+  // Gemini context limit warning heuristic: > 200KB of files
+  return { bytes, warning: bytes > 200 * 1024 };
 }

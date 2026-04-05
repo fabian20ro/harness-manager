@@ -108,6 +108,7 @@ describe("inspect helpers", () => {
   it("derives usage state from verdict states", () => {
     expect(usageStateForStates(["effective"])).toBe("used");
     expect(usageStateForStates(["observed"])).toBe("used");
+    expect(usageStateForStates(["proposed"])).toBe("proposed");
     expect(usageStateForStates(["referenced_only"])).toBe("unused");
     expect(usageStateForStates(["broken_reference"])).toBe("broken");
   });

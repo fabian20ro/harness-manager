@@ -1,0 +1,86 @@
+{
+  "surface": "gemini_cli",
+  "family": "gemini",
+  "display_name": "Gemini CLI",
+  "version": "2026-04-05",
+  "support_level": "full",
+  "sources": [
+    {
+      "label": "Gemini CLI Tool",
+      "url": "https://github.com/google/gemini-cli"
+    }
+  ],
+  "known_locations": [
+    {
+      "path": "~/.gemini",
+      "scope_type": "global_user",
+      "artifact_type": "directory",
+      "reason": "Global Gemini settings root.",
+      "states": ["declared"]
+    },
+    {
+      "path": "~/.gemini/GEMINI.md",
+      "scope_type": "global_user",
+      "artifact_type": "instructions",
+      "reason": "Global Gemini memory and context.",
+      "states": ["declared", "effective"]
+    }
+  ],
+  "artifact_rules": [
+    {
+      "glob": "GEMINI.md",
+      "artifact_type": "instructions",
+      "reason": "Repo instructions for Gemini.",
+      "states": ["declared", "effective"]
+    },
+    {
+      "glob": ".gemini/tmp/**/plans/*.md",
+      "artifact_type": "instructions",
+      "reason": "Proposed Gemini implementation plan.",
+      "states": ["proposed"]
+    },
+    {
+      "glob": ".gemini/**/*.json",
+      "artifact_type": "config",
+      "reason": "Gemini project config.",
+      "states": ["declared"]
+    },
+    {
+      "glob": ".geminiignore",
+      "artifact_type": "config",
+      "reason": "Gemini ignore file.",
+      "states": ["declared"]
+    }
+  ],
+  "project_discovery_rules": [
+    {
+      "glob": "GEMINI.md",
+      "kind": "workspace_candidate",
+      "score": 215,
+      "reason": "Workspace contains GEMINI.md.",
+      "root_strategy": { "type": "match_parent" }
+    },
+    {
+      "glob": ".geminiignore",
+      "kind": "workspace_candidate",
+      "score": 150,
+      "reason": "Workspace contains .geminiignore.",
+      "root_strategy": { "type": "match_parent" }
+    },
+    {
+      "glob": ".gemini/settings.json",
+      "kind": "workspace_candidate",
+      "score": 200,
+      "reason": "Workspace contains .gemini/settings.json.",
+      "root_strategy": { "type": "levels_up", "count": 1 }
+    }
+  ],
+  "observed_probes": ["ps:gemini"],
+  "plugin_system": {
+    "system": "gemini",
+    "install_roots": ["~/.gemini/plugins"],
+    "manifest_paths": ["plugin.json", "package.json"],
+    "config_paths": ["~/.gemini/settings.json", "{project}/.gemini/settings.json"],
+    "compatibility": ["gemini_cli"]
+  }
+}

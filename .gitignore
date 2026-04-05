@@ -4,3 +4,4 @@
 /ui/.npm-cache
 /ui/tsconfig.app.tsbuildinfo
 /ui/public/build-meta.json
+.playwright-mcp

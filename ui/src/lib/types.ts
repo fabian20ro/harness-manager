@@ -23,6 +23,7 @@ export type GraphNodeRecord = {
   display_path?: string;
   root_path?: string;
   name?: string;
+  byte_size?: number;
   [key: string]: unknown;
 };
 

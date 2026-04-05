@@ -1,13 +1,29 @@
-import { formatDisplayPath } from "../lib/inspect";
-import type { JobStatus } from "../lib/types";
+import { calculateContextCost, formatDisplayPath } from "../lib/inspect";
+import type { JobStatus, SurfaceState } from "../lib/types";
 
 type ScanStatusBarProps = {
   job: JobStatus | null;
   message?: string;
+  graph?: SurfaceState | null;
 };
 
-export function ScanStatusBar({ job, message }: ScanStatusBarProps) {
-  if (!job && !message) return null;
+export function ScanStatusBar({ job, message, graph }: ScanStatusBarProps) {
+  const { bytes, warning } = calculateContextCost(graph ?? null);
+  const sizeKb = Math.round(bytes / 1024);
+
+  if (!job && !message) {
+    if (!graph || bytes === 0) return null;
+    return (
+      <div className={`status-notice ${warning ? 'failed' : 'info'}`} role="status" aria-live="polite" aria-label="Status">
+        <span className="status-notice-icon" aria-hidden="true">
+          {warning ? '!' : 'i'}
+        </span>
+        <div className="status-notice-copy">
+          <span>Effective context size: {sizeKb} KB {warning && "(Approaching Gemini truncation limit)"}</span>
+        </div>
+      </div>
+    );
+  }
 
   if (!job) {
     return (
@@ -17,6 +33,7 @@ export function ScanStatusBar({ job, message }: ScanStatusBarProps) {
         </span>
         <div className="status-notice-copy">
           <span>{message}</span>
+          {bytes > 0 && <span style={{marginLeft: 10, opacity: 0.8}}>| Context size: {sizeKb} KB {warning && '⚠️'}</span>}
         </div>
       </div>
     );
@@ -44,6 +61,7 @@ export function ScanStatusBar({ job, message }: ScanStatusBarProps) {
           {job.message}
           {job.current_path ? ` • ${formatDisplayPath(job.current_path)}` : ""}
           {counts ? ` • ${counts}` : ""}
+          {bytes > 0 && ` | Context size: ${sizeKb} KB ${warning ? '⚠️' : ''}`}
         </span>
       </div>
     </div>

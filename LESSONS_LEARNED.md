@@ -13,7 +13,7 @@
 ---
 
 ## Architecture & Design Decisions
-<!-- **[YYYY-MM-DD]** title - explanation -->
+**[2026-04-06]** domain-driven file splitting - split large orchestrators (500+ lines) by domain (discovery vs graph vs api) to prevent dependency entanglement. Compose specialized hooks in UI controllers instead of keeping state monolithic.
 
 ## Code Patterns & Pitfalls
 <!-- **[YYYY-MM-DD]** title - explanation -->

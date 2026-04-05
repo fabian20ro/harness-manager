@@ -64,13 +64,15 @@ export function InspectToolbar({
           </select>
         </label>
         <label className="api-field">
-          <span>API Base</span>
+          <span>API</span>
           <input
             value={apiBase}
             onChange={(event) => onApiBaseChange(event.target.value)}
             placeholder="http://127.0.0.1:8765"
+            style={{ minWidth: '160px' }}
           />
         </label>
+        <div style={{ flex: 1 }} />
         <HelperCommand onCopy={onCopyHelper} />
         <div className="toolbar-action">
           <button
@@ -78,11 +80,15 @@ export function InspectToolbar({
             onClick={onScopedReindex}
             disabled={scopedReindexDisabled}
           >
-            {scopedReindexDisabled ? "Reindexing..." : "Reindex current"}
+            {scopedReindexDisabled ? "Reindexing..." : "Reindex"}
           </button>
-          {scopedStatus ? <span className="toolbar-action-status">{scopedStatus}</span> : null}
         </div>
       </div>
+      {scopedStatus && (
+        <div style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: '8px', paddingLeft: '4px' }}>
+          {scopedStatus}
+        </div>
+      )}
     </header>
   );
 }

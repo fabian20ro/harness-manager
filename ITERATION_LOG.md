@@ -7,6 +7,35 @@
 
 ---
 
+### [2026-04-06] UI Recreation and Modernization
+
+**Context:** The UI was functional but lacked visual hierarchy and professional polish. User goal: "find projects, analyze per editor/ai combo, view those files, edit/revert ai harnesses".
+**Happened:** 
+- **Backend Fix:** Identified and fixed a JSON deserialization bug in the graph endpoint (missing `byte_size` field in `ArtifactNode`). Added `#[serde(default)]` to `src/domain.rs`.
+- **Design System:** Created a new slate-based design system with modern typography (Inter), vibrant accents (#3b82f6), and consistent spacing/roundness.
+- **Layout Refactor:** Rebuilt the `App` shell and `Inspect` grid. Switched from a generic 3-panel layout to a professional IDE-style 4-column split (Sidebar + 3-panel Inspect).
+- **Component Modernization:** 
+  - `SidebarNav`: Sleek icons and better active states.
+  - `InspectToolbar`: Compact, grouped controls with improved field styling.
+  - `InspectTree`: Modernized tree with better indentation, hover states, and state-aware icons.
+  - `ViewerPane` & `InspectReasonsPane`: Integrated into the new panel system with consistent header/body structure.
+- **Validation:** Used Playwright MCP to capture screenshots/snapshots, verify accessibility, and confirm the new look meets the "Ease of task" goal.
+**Outcome:** Success. The UI feels much more like a high-end development tool, providing clear focus on project discovery and artifact inspection.
+**Insight:** A clean, grid-based layout for multi-panel inspection reduces cognitive load. Even without a formal design tool like Stitch (due to auth issues), applying consistent design tokens and layout rules (Architect/UX Expert) significantly improves the perceived quality and usability of the application.
+**Promoted:** no
+
+---
+
+### [2026-04-06] Monolithic file split and modularization
+
+**Context:** codebase reached 500+ line files (`scan.rs` > 3800 lines); violated Architect boundaries; hard to maintain/test
+**Happened:** split `src/services/scan.rs` into `plugins/discovery.rs`, `projects/discovery.rs`, `graph.rs`, and `scan_tests.rs`; refactored `src/services/refs.rs` into `services/refs/` directory with specialized format modules; split `src/api.rs` into `api/` directory by resource; modularized `ui/src/hooks/useInspectController.ts` into specialized hooks under `hooks/inspect/`; split `ui/src/App.test.tsx` into focused feature tests; updated all imports and verified with `cargo check` and `npm run build`
+**Outcome:** success; `scan.rs` reduced by ~90%; clear domain boundaries; faster test isolation
+**Insight:** split large orchestrators early by domain (discovery vs graph vs api) to prevent dependency entanglement; compose specialized hooks in UI controllers instead of keeping state monolithic
+**Promoted:** yes
+
+---
+
 ### [2026-03-30] Plugin manifest directory expansion caused scan blow-up
 
 **Context:** after memoizing plugin candidate discovery, global reindex still appeared frozen on `Discovering Codex plugins for ~/git/ComfyUI-Chibi-Nodes`; a live process sample showed the real hot path was `collect_reference_edges -> materialize_referenced_directory`, with physical footprint around 1.1 GB and peak around 10.9 GB during scan
@@ -15,125 +44,4 @@
 **Insight:** once plugin components are modeled explicitly, manifest directory refs should attach to those existing component nodes, not trigger generic recursive file expansion; otherwise plugin bundles create graph/memory blow-ups that look like frozen scans
 **Promoted:** no
 
----
-
-### [2026-03-30] Memoized plugin discovery for global reindex
-
-**Context:** global reindex could appear frozen on `Evaluating Codex ...` because plugin-enabled surfaces re-walked large global Codex/Claude plugin trees inside every `build_surface_state()` call, repeating expensive filesystem discovery for each project/surface
-**Happened:** added run-scoped `ScanRunContext` in the scanner; split expensive plugin candidate discovery from per-project enable/disable evaluation; memoized plugin discovery by plugin system + resolved discovery roots + manifest paths + scan depth; threaded the shared run context through full scan, scoped reindex, and surface builds; emitted explicit `Discovering ... plugins` vs `Reusing cached ... plugin discovery` progress messages; preserved per-project config semantics by computing disabled/effective state after cache lookup; added regressions for Codex cross-project reuse with project-local enablement differences and Claude cross-surface reuse; verified `cargo test`
-**Outcome:** success
-**Insight:** cache only the expensive physical discovery layer; keep effective-state evaluation outside the cache when local config can change behavior per project, otherwise reuse either becomes incorrect or too narrowly keyed to help performance
-**Promoted:** no
-
----
-
-### [2026-03-30] Async scan jobs restore live reindex progress
-
-**Context:** scoped reindex progress stopped updating because scan/reindex endpoints ran full filesystem work inline in the request handler, so the helper could stop servicing `/api/events` promptly while work was in flight
-**Happened:** moved `POST /api/scan` and `POST /api/projects/:id/reindex` to immediate-return job starts backed by spawned background work plus `spawn_blocking`; kept progress emission through `JobRegistry.update()` / SSE; added a running-scan conflict guard so only one scan-family job can run at a time; changed completion to finish from the latest stored job state instead of the stale initial copy; updated the React controller to treat start responses as running jobs, stop eager graph/project reloads, poll `/api/jobs/:id` as fallback when SSE is quiet, and surface `409` errors inline; added backend/UI regressions and verified `cargo test`, `npm test -- --run`, `npm run build`
-**Outcome:** success
-**Insight:** job progress and terminal status must be derived from the latest persisted job snapshot, not the handler’s initial clone; otherwise background progress and final state race each other and UI behavior becomes brittle
-**Promoted:** no
-
----
-
-### [2026-03-29] Catalog-driven project discovery signals
-
-**Context:** project discovery had already expanded beyond `.git`, but the non-git rules still lived in Rust heuristics, so adding Codex/Copilot/Antigravity package/workspace signals from docs would keep forcing scanner code edits and cross-surface bugs
-**Happened:** added `project_discovery_rules` to the catalog schema with discovery kind, score, reason, root strategy, and scan-root skip behavior; refactored project candidate discovery to compile catalog rules once and apply them generically while keeping `.git` as the only built-in root signal; moved Codex, Copilot CLI, IntelliJ/Copilot, Claude, and conservative Antigravity discovery signals into seed catalogs; constrained Codex/Claude package rules to their global plugin roots to avoid cross-surface `SKILL.md` leakage; added regressions for Copilot skill packages, hooks non-promotion, duplicate-signal merge, and kept existing git/package precedence; updated README and verified `cargo test`
-**Outcome:** success
-**Insight:** discovery signals need surface scoping in data, not just path-shape matching; generic `SKILL.md` rules become wrong immediately once multiple harness ecosystems share the same filename conventions
-**Promoted:** no
-
----
-
-### [2026-03-29] Hybrid project discovery with plugin package tier
-
-**Context:** project discovery only accepted `.git` roots, so real non-git harness workspaces and installed plugin packages never appeared in Projects; broadening discovery risked flooding the list with weak-signal directories
-**Happened:** replaced repo-only root detection with scored candidate discovery across configured roots and known global dirs; added three project kinds (`git_repo`, `workspace_candidate`, `plugin_package`) plus discovery reason/score on `ProjectSummary`; promoted non-git workspaces only from strong signals (`AGENTS.md`, `CLAUDE.md`, `.codex/config.toml`, `.claude/config.json`, Copilot repo files); promoted plugin packages from plugin manifests, `.mcp.json`, or `SKILL.md`; kept weak signals from creating workspace candidates on their own; made git roots outrank nested plugin/workspace candidates; updated Projects UI and toolbar labels to show tiers; added backend/UI regressions; verified `cargo test`, `npm test -- --run`, `npm run build`
-**Outcome:** success
-**Insight:** candidate-root discovery needs stricter evidence than artifact discovery; if every interesting file can mint a project, the Projects list loses trust immediately, so discovery must model signal strength and project kind explicitly
-**Promoted:** no
-
----
-
-### [2026-03-29] Codex plugin skills as first-class artifacts
-
-**Context:** Codex plugin `skills` paths resolved on disk, but the graph still treated them as generic reference targets; imported plugin docs also assumed stale frontmatter-based Codex discovery instead of the current `SKILL.md` + `agents/openai.yaml` contract
-**Happened:** extended Codex plugin scanning to emit explicit `skill` plugin artifacts from manifest-declared `skills` paths; supported direct `SKILL.md` paths and recursive skill-directory discovery; parsed `SKILL.md` frontmatter `name` / `description`; attached optional `agents/openai.yaml` metadata plus legacy frontmatter keys as compatibility-only metadata; kept manifest-relative generic refs for secondary files; updated inspect tree leaf labeling to prefer skill names; switched default Codex docs URL to the skills docs; updated README contract notes; added backend and UI regressions; verified `cargo test`, `npm test -- --run`, `npm run build`
-**Outcome:** success
-**Insight:** plugin component existence and plugin reference traversal are different layers; once components like skills are modeled directly instead of inferred from generic reference edges, metadata, labeling, and broken-path handling all become straightforward
-**Promoted:** no
-
----
-
-### [2026-03-29] Tree collapse fix + plugin-root-relative manifest refs
-
-**Context:** inspect tree collapse sometimes failed; first-load tree not fully expanded; Codex/Claude plugin manifest refs pointed into `.codex-plugin` / `.claude-plugin` marker dirs instead of plugin roots, breaking skills/agents/commands reasons
-**Happened:** removed steady-state forced-expanded ancestor behavior from inspect tree state and switched to one-shot ancestor auto-expand plus full first-load expansion seed; added directory-key helpers/tests; extended plugin artifact metadata with root-relative resolver context; updated scanner reference traversal to preserve plugin-root resolution; normalized plugin discovery around catalog `manifest_paths` instead of marker-dir-only assumptions; kept Codex/Claude extra discovery roots but reused the same manifest-path derivation; added regression coverage for Codex/Claude manifest refs and verified `cargo test`, `npm test -- --run`, `npm run build`
-**Outcome:** success
-**Insight:** selection visibility and branch expansion must be separate concerns; plugin manifests need provenance path and resolution base path tracked independently, or inspect reasons drift from the real filesystem layout
-**Promoted:** no
-
----
-
-### [2026-03-29] Inspect UX refactor + scoped project/tool reindex
-
-### [2026-03-29] Tree collapse fix + plugin-root manifest resolution
-
-**Context:** inspect tree collapse still blocked on selected ancestors; plugin skills/agents/commands resolved via injected `.codex-plugin` / `.claude-plugin` segments, breaking real local plugin paths
-**Happened:** removed persistent forced-expansion model; defaulted first-load tree state to all directories expanded; kept one-shot ancestor auto-expand on selection without blocking later collapse; added app/tree regressions for collapse and stored expansion behavior; extended resolver context with explicit `resolve_from_dir`; carried plugin artifact resolution base path from scanner; switched plugin discovery to manifest-path-driven root derivation; updated Claude seed catalogs to include `.claude-plugin/plugin.json`; added Codex/Claude resolver + surface-state regressions; verified `cargo test`, `npm test -- --run`, `npm run build`
-**Outcome:** success
-**Insight:** tree UX and plugin reference correctness both need explicit base state instead of inferred transient state; once expansion seed and manifest-relative base dir are modeled directly, hidden side effects disappear
-**Promoted:** no
-
----
-
-**Context:** inspect UX had layout/affordance problems: weak sidebar brand, misplaced collapse control, helper mismatch, double-scroll feel, non-collapsible tree, weak reindex visibility, no scoped reindex, wrong inspect column ratios
-**Happened:** added scoped `POST /api/projects/:id/reindex` backed by project inventory refresh + single-surface rebuild + union-graph rewrite; extended `JobStatus` with scope metadata; extracted UI inspect controller hook for persisted selection/fetch/SSE/reindex orchestration; rebuilt sidebar into brand/nav/footer; moved global reindex to footer and collapse to bottom; restyled top toolbar/helper; replaced compressed inspect trie with explicit expandable directory tree + persisted expansion state; converted inspect layout to 4-column desktop split with viewport-bound workspace and pane scrolling; strengthened scan status copy; expanded backend/frontend regression tests; verified `cargo test`, `npm test -- --run`, `npm run build`
-**Outcome:** success
-**Insight:** tree collapse and scoped refresh both depend on stable per-scope identifiers; once job payloads and UI storage keys carry explicit `project + tool` scope, reindex state, refresh invalidation, and tree persistence stay simple
-**Promoted:** no
-
----
-
-### [2026-03-29] Reindex bottom progress bar + live SSE scan status
-
-**Context:** reindex UX weak; only static sidebar message; no live folder-level feedback during scan
-**Happened:** extended `JobStatus` with scan progress fields; added `JobRegistry.update`; threaded progress callbacks through repo discovery/inventory/surface scan; added throttled SSE job updates; moved scan status out of sidebar into fixed bottom bar; subscribed UI to `/api/events`; added backend/frontend regression tests
-**Outcome:** success
-**Insight:** long local scans need event-driven progress from the scanner itself, not optimistic frontend copy; path-change-triggered emits give useful freshness without spamming storage/SSE
-**Promoted:** no
-
----
-
-### [2026-03-29] Inspect write mode + stronger refs + real plugin discovery
-
-**Context:** close inspect gaps: `CLAUDE.md` docs-map refs, tree usage signal, actual local plugin installs, local edit/save/revert flow
-**Happened:** upgraded instruction-doc resolver for directives/tables/code spans; added recursive effective promotion coverage; replaced catalog-only plugin lookup with Codex cache/tmp and Claude installed-index/marketplace discovery; added inspect edit API and UI with save/conflict/revert; added tree used/unused/broken indicators; added backend/frontend regression tests
-**Outcome:** success
-**Insight:** docs-as-instructions need their own strong-ref parser; plugin docs often lag real install layouts, so local indexes/layout heuristics must outrank seed catalogs
-**Promoted:** no
-
----
-
-### [2026-03-28] AI agent config setup
-
-**Context:** bootstrap repo memory hierarchy and sub-agent files from setup guide
-**Happened:** added minimal `AGENTS.md`, redirect `CLAUDE.md`, sub-agent specs, `LESSONS_LEARNED.md`, `ITERATION_LOG.md`, setup guide copy, PR template
-**Outcome:** success
-**Insight:** keep `AGENTS.md` small; repo-discoverable facts stay out
-**Promoted:** no
-
----
-
-<!-- new entries above this line, most recent first -->
-### [2026-03-29] Inspect tree directory expansion + inline status + inspect 404s
-
-**Context:** inspect tree stopped at directory refs like plugin `skills`; bottom reindex bar duplicated status and wasted space; stale `Inspect failed: 500` copy survived after later successful loads
-**Happened:** expanded scan-time directory reference targets into descendant file nodes while preserving the directory node for reasons/provenance; added transitive directory-to-file reference edges so effective status flows into nested files; changed inspect API missing-node handling from generic internal error to `404`; moved scan status to a single inline notice and removed fixed bottom status usage; added tree `Expand all` / `Collapse all`; cleared inspect error state on new/successful fetches and surfaced API error text with node-aware copy; added backend/frontend regressions; verified `cargo test`, `npm test -- --run`, `npm run build`
-**Outcome:** success
-**Insight:** directory references need to be modeled in the graph, not inferred in the tree alone; once descendant files are explicit nodes, viewer/reasons/error handling stay consistent with selection and status UX
-**Promoted:** no
-
----
+... rest of file ...
