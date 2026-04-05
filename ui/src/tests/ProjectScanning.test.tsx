@@ -290,7 +290,7 @@ describe("Project Scanning", () => {
     expect(graphCalls).toBe(1);
 
     await act(async () => {
-      screen.getByRole("button", { name: "Reindex current" }).click();
+      screen.getByRole("button", { name: "Reindex" }).click();
     });
 
     expect(screen.getByRole("button", { name: "Reindexing..." })).toBeDisabled();
@@ -370,7 +370,7 @@ describe("Project Scanning", () => {
     );
 
     await act(async () => {
-      screen.getByRole("button", { name: "Reindex current" }).click();
+      screen.getByRole("button", { name: "Reindex" }).click();
     });
 
     await waitFor(() =>
@@ -378,6 +378,6 @@ describe("Project Scanning", () => {
         screen.getByText("Error: Another scan or reindex job is already running."),
       ).toBeInTheDocument(),
     );
-    expect(screen.getByRole("button", { name: "Reindex current" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Reindex" })).toBeEnabled();
   });
 });
