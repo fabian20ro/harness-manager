@@ -23,6 +23,11 @@ const CATALOG_FILES: &[(&str, &str)] = &[
         "intellij_copilot",
         include_str!("../catalogs/seed/intellij_copilot.json"),
     ),
+    ("gemini_cli", include_str!("../catalogs/seed/gemini_cli.json")),
+    (
+        "pi_coding_agent",
+        include_str!("../catalogs/seed/pi_coding_agent.json"),
+    ),
     ("opencode", include_str!("../catalogs/seed/opencode.json")),
     (
         "antigravity",

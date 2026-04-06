@@ -7,6 +7,34 @@
 
 ---
 
+### [2026-04-06] Tool Expansion and Agent Capabilities Dashboard
+
+**Context:** Gemini CLI, Pi Coding Agent, and OpenCode were missing or using outdated configuration patterns. The UI lacked a high-level overview of project "agentic surface area" (skills, hooks, etc.).
+**Happened:**
+- **Tool Updates:** Integrated Gemini CLI, Pi Coding Agent, and OpenCode into backend catalogs and UI. Researched and applied latest 2026 configuration patterns (e.g., modular `GEMINI.md` with `@file`, `AGENTS.md` standardization, `.claude/rules/`, `.github/hooks.json`).
+- **Backend Refinement:** Updated `AppConfig` with new global directories (`~/.gemini`, `~/.pi/agent`, `~/.opencode`, `~/.copilot`).
+- **UI Dashboard:** Implemented "Agent Capabilities" dashboard to aggregate Skills, Hooks, MCP Servers, and Instructions from the project graph. Updated `MENU_ITEMS` and sidebar navigation.
+- **Verification:** Verified with `cargo check` and `npm run build`.
+**Outcome:** Success. Project discovery and artifact mapping are now highly accurate for the latest AI tools.
+**Insight:** High-level capability aggregation (Skills/Hooks) provides immediate value over raw graph exploration for understanding how an AI agent will interact with a project.
+**Promoted:** no
+
+---
+
+### [2026-04-06] Service Layer Modularization (Graph & Tests)
+
+**Context:** `src/services/graph.rs` and `src/services/scan_tests.rs` grew beyond 1300 lines, becoming "god modules" that were hard to navigate and test.
+**Happened:**
+- **Graph Modularization:** Split `src/services/graph.rs` into a new `services/graph/` directory with specialized modules: `metadata.rs` (skill parsing), `plugins.rs` (discovery), `edges.rs` (graph logic), and `util.rs` (shared helpers).
+- **Test Reorganization:** Split `src/services/scan_tests.rs` into `services/scan_tests/` directory grouped by functionality: `discovery.rs`, `indexing.rs`, `references.rs`, and `plugins.rs`.
+- **Bug Fixes:** Fixed a type mismatch in node verdict creation and refactored plugin discovery caching to be project-agnostic for global plugins, improving cache hit rates.
+- **Verification:** Verified all 21 integration tests pass in the new modular structure.
+**Outcome:** Success. Codebase complexity is significantly reduced; service layer is now clean and extensible.
+**Insight:** When modularizing, ensure cache keys for global resources are project-agnostic to prevent redundant I/O across different project scans.
+**Promoted:** yes
+
+---
+
 ### [2026-04-06] UI Recreation and Modernization
 
 **Context:** The UI was functional but lacked visual hierarchy and professional polish. User goal: "find projects, analyze per editor/ai combo, view those files, edit/revert ai harnesses".

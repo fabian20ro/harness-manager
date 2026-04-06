@@ -2,7 +2,7 @@
   "surface": "codex",
   "family": "codex",
   "display_name": "Codex",
-  "version": "2026-03-29",
+  "version": "2026-04-06",
   "support_level": "full",
   "sources": [
     {
@@ -12,6 +12,10 @@
     {
       "label": "OpenAI Codex Build Plugins",
       "url": "https://developers.openai.com/codex/plugins/build"
+    },
+    {
+      "label": "OpenAI Codex CLI v0.111.0+",
+      "url": "https://openai.com/blog/openai-codex"
     }
   ],
   "known_locations": [
@@ -21,6 +25,13 @@
       "artifact_type": "config",
       "reason": "Global Codex config.",
       "states": ["declared", "effective"]
+    },
+    {
+      "path": "~/.codex/hooks",
+      "scope_type": "global_user",
+      "artifact_type": "directory",
+      "reason": "Global Codex hooks.",
+      "states": ["declared"]
     }
   ],
   "artifact_rules": [
@@ -35,6 +46,18 @@
       "artifact_type": "config",
       "reason": "Project Codex config.",
       "states": ["declared", "effective"]
+    },
+    {
+      "glob": ".mcp.json",
+      "artifact_type": "config",
+      "reason": "MCP server configuration.",
+      "states": ["declared", "effective"]
+    },
+    {
+      "glob": ".codex/hooks/**/*.sh",
+      "artifact_type": "script",
+      "reason": "Project-specific lifecycle hooks.",
+      "states": ["declared"]
     },
     {
       "glob": ".codex/**/*.md",

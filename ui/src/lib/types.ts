@@ -19,6 +19,7 @@ export type ToolContext = {
 export type GraphNodeRecord = {
   id: string;
   kind: string;
+  artifact_type?: string;
   path?: string;
   display_path?: string;
   root_path?: string;

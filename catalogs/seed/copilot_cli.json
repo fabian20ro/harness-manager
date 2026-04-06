@@ -2,23 +2,23 @@
   "surface": "copilot_cli",
   "family": "copilot",
   "display_name": "Copilot CLI",
-  "version": "2026-03-29",
-  "support_level": "best_effort",
+  "version": "2026-04-06",
+  "support_level": "full",
   "sources": [
     {
-      "label": "GitHub Copilot CLI plugins",
-      "url": "https://docs.github.com/en/copilot/concepts/agents/copilot-cli/about-cli-plugins"
-    },
-    {
-      "label": "GitHub Copilot skills",
-      "url": "https://docs.github.com/en/copilot/how-tos/use-copilot-agents/coding-agent/create-skills"
-    },
-    {
-      "label": "GitHub Copilot CLI hooks",
-      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/use-hooks"
+      "label": "GitHub Copilot CLI v2 Docs",
+      "url": "https://docs.github.com/en/copilot/github-copilot-cli"
     }
   ],
-  "known_locations": [],
+  "known_locations": [
+    {
+      "path": "~/.copilot",
+      "scope_type": "global_user",
+      "artifact_type": "directory",
+      "reason": "Global Copilot settings and instructions root.",
+      "states": ["declared"]
+    }
+  ],
   "artifact_rules": [
     {
       "glob": ".github/copilot-instructions.md",
@@ -27,27 +27,51 @@
       "states": ["declared", "effective"]
     },
     {
-      "glob": ".github/agents/*.agent.md",
-      "artifact_type": "agent",
-      "reason": "Repo custom agent definitions.",
+      "glob": "AGENTS.md",
+      "artifact_type": "instructions",
+      "reason": "Standardized agent rules.",
+      "states": ["declared", "effective"]
+    },
+    {
+      "glob": ".github/hooks.json",
+      "artifact_type": "config",
+      "reason": "Copilot CLI hooks (v2).",
+      "states": ["declared", "effective"]
+    },
+    {
+      "glob": ".github/instructions/**/*.instructions.md",
+      "artifact_type": "instructions",
+      "reason": "Path-specific instructions.",
       "states": ["declared"]
+    },
+    {
+      "glob": "~/.copilot/config.json",
+      "artifact_type": "config",
+      "reason": "Global Copilot CLI v2 configuration.",
+      "states": ["declared", "effective"]
+    },
+    {
+      "glob": "~/.copilot/instructions.md",
+      "artifact_type": "instructions",
+      "reason": "Global user instructions.",
+      "states": ["declared", "effective"]
     }
   ],
   "project_discovery_rules": [
     {
       "glob": ".github/copilot-instructions.md",
       "kind": "workspace_candidate",
-      "score": 200,
+      "score": 210,
       "reason": "Workspace contains .github/copilot-instructions.md.",
       "root_strategy": { "type": "levels_up", "count": 2 },
       "skip_if_scan_root": true
     },
     {
-      "glob": ".github/agents/*.agent.md",
+      "glob": ".github/hooks.json",
       "kind": "workspace_candidate",
-      "score": 195,
-      "reason": "Workspace contains .github/agents/*.agent.md.",
-      "root_strategy": { "type": "levels_up", "count": 3 },
+      "score": 190,
+      "reason": "Workspace contains Copilot CLI hooks.",
+      "root_strategy": { "type": "levels_up", "count": 2 },
       "skip_if_scan_root": true
     },
     {
@@ -58,6 +82,6 @@
       "root_strategy": { "type": "match_parent" }
     }
   ],
-  "observed_probes": ["ps:copilot"],
+  "observed_probes": ["ps:copilot", "ps:gh"],
   "plugin_system": null
 }

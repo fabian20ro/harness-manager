@@ -63,13 +63,15 @@ function TreeBranch({
 
   return (
     <div className="tree-branch">
-      <div 
-        className={`tree-node ${selected ? 'active' : ''}`} 
+      <div
+        role="button"
+        aria-label={node.nodeId ? `Select ${node.label}` : (isExpanded ? `Collapse ${node.label}` : `Expand ${node.label}`)}
+        className={`tree-node ${selected ? 'active' : ''}`}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         onClick={handleRowClick}
         role="button"
         tabIndex={0}
-        aria-label={`Select ${node.label}`}
+        aria-label={`${hasChildren ? (isExpanded ? "Collapse" : "Expand") : "Select"} ${node.label}`}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
@@ -77,13 +79,13 @@ function TreeBranch({
           }
         }}
       >
-        <span 
-          style={{ 
-            width: '16px', 
-            display: 'flex', 
-            justifyContent: 'center', 
+        <span
+          style={{
+            width: '16px',
+            display: 'flex',
+            justifyContent: 'center',
             cursor: 'pointer',
-            opacity: hasChildren ? 1 : 0 
+            opacity: hasChildren ? 1 : 0
           }}
           onClick={(e) => {
             if (hasChildren) {

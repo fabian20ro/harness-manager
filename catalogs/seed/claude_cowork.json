@@ -66,9 +66,9 @@
   "observed_probes": ["ps:claude", "ps:cowork"],
   "plugin_system": {
     "system": "claude",
-    "install_roots": ["~/.claude/plugins", "~/.config/claude/plugins"],
-    "manifest_paths": [".claude-plugin/plugin.json", "plugin.json", "package.json"],
-    "config_paths": ["~/.claude/config.json", "{project}/.claude/config.json"],
+    "install_roots": ["~/.claude/plugins"],
+    "manifest_paths": [".claude-plugin/plugin.json", "plugin.json"],
+    "config_paths": ["~/.claude/settings.json", "{project}/.claude/settings.json"],
     "compatibility": ["claude_code", "claude_cowork"]
   }
 }

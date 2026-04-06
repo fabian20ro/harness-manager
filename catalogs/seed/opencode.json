@@ -2,21 +2,33 @@
   "surface": "opencode",
   "family": "opencode",
   "display_name": "OpenCode",
-  "version": "2026-03-28",
+  "version": "2026-04-06",
   "support_level": "experimental",
-  "sources": [],
+  "sources": [
+    {
+      "label": "OpenCode Documentation",
+      "url": "https://opencode.ai/docs"
+    }
+  ],
   "known_locations": [
+    {
+      "path": "~/.opencode",
+      "scope_type": "global_user",
+      "artifact_type": "directory",
+      "reason": "Global OpenCode settings root.",
+      "states": ["declared"]
+    },
     {
       "path": "~/.config/opencode",
       "scope_type": "global_user",
       "artifact_type": "directory",
-      "reason": "Global OpenCode settings root.",
+      "reason": "Global OpenCode settings root (legacy).",
       "states": ["declared"]
     }
   ],
   "artifact_rules": [
     {
-      "glob": ".opencode/**/*",
+      "glob": ".opencode.json",
       "artifact_type": "config",
       "reason": "OpenCode project config.",
       "states": ["declared", "effective"]
@@ -25,7 +37,41 @@
       "glob": "OPENCODE.md",
       "artifact_type": "instructions",
       "reason": "Repo instructions for OpenCode.",
+      "states": ["declared", "effective"]
+    },
+    {
+      "glob": "AGENTS.md",
+      "artifact_type": "instructions",
+      "reason": "Standardized agent rules.",
+      "states": ["declared", "effective"]
+    },
+    {
+      "glob": ".opencode/agents/**/*.md",
+      "artifact_type": "agent",
+      "reason": "Custom project agents.",
       "states": ["declared"]
+    },
+    {
+      "glob": "~/.opencode.json",
+      "artifact_type": "config",
+      "reason": "Global OpenCode configuration.",
+      "states": ["declared", "effective"]
+    }
+  ],
+  "project_discovery_rules": [
+    {
+      "glob": ".opencode.json",
+      "kind": "workspace_candidate",
+      "score": 210,
+      "reason": "Workspace contains .opencode.json.",
+      "root_strategy": { "type": "match_parent" }
+    },
+    {
+      "glob": "OPENCODE.md",
+      "kind": "workspace_candidate",
+      "score": 200,
+      "reason": "Workspace contains OPENCODE.md.",
+      "root_strategy": { "type": "match_parent" }
     }
   ],
   "observed_probes": ["ps:opencode"],

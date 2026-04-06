@@ -74,6 +74,7 @@ pub enum ArtifactType {
     Mcp,
     Skill,
     Agent,
+    Script,
     PluginManifest,
     PluginDoc,
     PluginAsset,

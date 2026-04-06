@@ -22,7 +22,7 @@
 <!-- **[YYYY-MM-DD]** title - explanation -->
 
 ## Performance & Infrastructure
-<!-- **[YYYY-MM-DD]** title - explanation -->
+**[2026-04-06]** project-agnostic caching - when scanning for global resources (like user-level plugins or global config), ensure the cache key is independent of the current project root. This prevents redundant I/O and CPU-bound discovery during multi-project global scans.
 
 ## Dependencies & External Services
 <!-- **[YYYY-MM-DD]** title - explanation -->
