@@ -33,7 +33,8 @@ export const MENU_ITEMS = [
   { id: "Docs", label: "Docs", emoji: "📚" },
   { id: "Tool", label: "Tool", emoji: "🛠️" },
   { id: "Inspect", label: "Inspect", emoji: "🔎" },
-  { id: "Activity", label: "Activity", emoji: "⚡" },
+  { id: "Capabilities", label: "Capabilities", emoji: "⚡" },
+  { id: "Activity", label: "Activity", emoji: "🕒" },
 ] as const;
 
 export type AppTab = (typeof MENU_ITEMS)[number]["id"];
