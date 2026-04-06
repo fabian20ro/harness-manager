@@ -7,19 +7,31 @@
   "sources": [],
   "known_locations": [
     {
-      "path": "~/.pi",
+      "path": "~/.pi/agent",
       "scope_type": "global_user",
       "artifact_type": "directory",
-      "reason": "Global Pi settings root.",
+      "reason": "Global Pi settings and agent instructions.",
       "states": ["declared"]
     }
   ],
   "artifact_rules": [
     {
-      "glob": "PI.md",
+      "glob": "AGENTS.md",
       "artifact_type": "instructions",
-      "reason": "Repo instructions for Pi.",
+      "reason": "Repo instructions for Pi agent.",
       "states": ["declared", "effective"]
+    },
+    {
+      "glob": "SYSTEM.md",
+      "artifact_type": "instructions",
+      "reason": "System prompt override.",
+      "states": ["declared"]
+    },
+    {
+      "glob": "APPEND_SYSTEM.md",
+      "artifact_type": "instructions",
+      "reason": "System prompt extension.",
+      "states": ["declared"]
     },
     {
       "glob": ".pi/**/*.json",
@@ -30,10 +42,17 @@
   ],
   "project_discovery_rules": [
     {
-      "glob": "PI.md",
+      "glob": "AGENTS.md",
       "kind": "workspace_candidate",
       "score": 215,
-      "reason": "Workspace contains PI.md.",
+      "reason": "Workspace contains AGENTS.md.",
+      "root_strategy": { "type": "match_parent" }
+    },
+    {
+      "glob": "SYSTEM.md",
+      "kind": "workspace_candidate",
+      "score": 190,
+      "reason": "Workspace contains SYSTEM.md.",
       "root_strategy": { "type": "match_parent" }
     }
   ],

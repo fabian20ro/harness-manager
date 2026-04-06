@@ -104,12 +104,21 @@ fn plugin_discovery_roots(
     plugin_system: &PluginSystemCatalog,
     repo_root: &Path,
 ) -> (Vec<(PathBuf, &'static str)>, usize) {
-    let mut roots = plugin_system
-        .install_roots
-        .iter()
-        .map(|path| resolve_catalog_path(path, &config.home_dir, Some(repo_root)))
-        .map(|path| (path, "install_root"))
-        .collect::<Vec<_>>();
+    let mut roots = Vec::new();
+
+    for pattern in &plugin_system.install_roots {
+        if pattern.contains("{project}") {
+            roots.push((
+                resolve_catalog_path(pattern, &config.home_dir, Some(repo_root)),
+                "install_root",
+            ));
+        } else {
+            roots.push((
+                resolve_catalog_path(pattern, &config.home_dir, None),
+                "install_root",
+            ));
+        }
+    }
 
     match plugin_system.system.as_str() {
         "codex" => {

@@ -2,7 +2,7 @@
   "surface": "gemini_cli",
   "family": "gemini",
   "display_name": "Gemini CLI",
-  "version": "2026-04-05",
+  "version": "2026-04-06",
   "support_level": "full",
   "sources": [
     {
@@ -22,7 +22,7 @@
       "path": "~/.gemini/GEMINI.md",
       "scope_type": "global_user",
       "artifact_type": "instructions",
-      "reason": "Global Gemini memory and context.",
+      "reason": "Global Gemini instructions.",
       "states": ["declared", "effective"]
     }
   ],
@@ -34,13 +34,13 @@
       "states": ["declared", "effective"]
     },
     {
-      "glob": ".gemini/tmp/**/plans/*.md",
+      "glob": "AGENTS.md",
       "artifact_type": "instructions",
-      "reason": "Proposed Gemini implementation plan.",
-      "states": ["proposed"]
+      "reason": "Standardized agent rules.",
+      "states": ["declared", "effective"]
     },
     {
-      "glob": ".gemini/**/*.json",
+      "glob": ".gemini/settings.json",
       "artifact_type": "config",
       "reason": "Gemini project config.",
       "states": ["declared"]
@@ -50,6 +50,12 @@
       "artifact_type": "config",
       "reason": "Gemini ignore file.",
       "states": ["declared"]
+    },
+    {
+      "glob": ".gemini/tmp/**/plans/*.md",
+      "artifact_type": "instructions",
+      "reason": "Proposed Gemini implementation plan.",
+      "states": ["proposed"]
     }
   ],
   "project_discovery_rules": [
