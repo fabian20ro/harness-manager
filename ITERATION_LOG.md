@@ -7,7 +7,18 @@
 
 ---
 
-### [2026-04-06] Tool Expansion and Agent Capabilities Dashboard
+### [2026-04-06] PR #4 Conflict Resolution and PR Verification
+
+**Context:** PR #4 had merge conflicts and auto-merge errors in the UI components and tests.
+**Happened:**
+- **Conflict Resolution:** Resolved conflicts in `ITERATION_LOG.md`, `CapabilitiesDashboard.tsx`, and `InspectTree.test.tsx`.
+- **Bug Fixes:** Fixed a TypeScript error in `InspectTree.tsx` (duplicate `role` and `aria-label` attributes) and updated `GraphInspection.test.tsx` to handle the new accessible labels for directories.
+- **Verification:** Verified with `cargo check` and `npm run build && npm test` in the `ui` directory.
+- **Outcome:** Success. PR branch is now up-to-date with `main` and verified as green.
+**Insight:** Auto-merges of JSX can silently introduce duplicate attributes that break TypeScript builds and accessibility-aware tests.
+**Promoted:** no
+
+---
 
 **Context:** Gemini CLI, Pi Coding Agent, and OpenCode were missing or using outdated configuration patterns. The UI lacked a high-level overview of project "agentic surface area" (skills, hooks, etc.).
 **Happened:**
