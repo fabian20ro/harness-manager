@@ -64,12 +64,12 @@ function TreeBranch({
   return (
     <div className="tree-branch">
       <div 
+        role="button"
+        tabIndex={0}
+        aria-label={node.nodeId ? `Select ${node.label}` : (isExpanded ? `Collapse ${node.label}` : `Expand ${node.label}`)}
         className={`tree-node ${selected ? 'active' : ''}`} 
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         onClick={handleRowClick}
-        role="button"
-        tabIndex={0}
-        aria-label={`Select ${node.label}`}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();

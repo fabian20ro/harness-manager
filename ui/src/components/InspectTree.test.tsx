@@ -39,10 +39,10 @@ describe("InspectTree", () => {
     );
 
     // Testing the inner element that actually has the class
-    const agentsRow = screen.getByRole("button", { name: "Select AGENTS.md" });
+    const agentsRow = screen.getByRole("button", { name: /AGENTS.md/ });
     expect(agentsRow.querySelector('.usage-used')).toBeInTheDocument();
 
-    const missingRow = screen.getByRole("button", { name: "Select missing.md" });
+    const missingRow = screen.getByRole("button", { name: /missing.md/ });
     expect(missingRow.querySelector('.usage-broken')).toBeInTheDocument();
   });
 

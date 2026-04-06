@@ -247,7 +247,7 @@ describe("Graph Inspection", () => {
     });
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Select demo" })).toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "Select notes" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Expand notes" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Select policy.md" })).not.toBeInTheDocument();
   });
 

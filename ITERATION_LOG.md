@@ -11,8 +11,8 @@
 
 **Context:** Gemini CLI, Pi Coding Agent, and OpenCode were missing or using outdated configuration patterns. The UI lacked a high-level overview of project "agentic surface area" (skills, hooks, etc.).
 **Happened:**
-- **Tool Updates:** Integrated Gemini CLI, Pi Coding Agent, and OpenCode into backend catalogs and UI. Researched and applied latest 2026 configuration patterns (e.g., modular `GEMINI.md` with `@file`, `AGENTS.md` standardization, `.claude/rules/`, `.github/hooks.json`).
-- **Backend Refinement:** Updated `AppConfig` with new global directories (`~/.gemini`, `~/.pi/agent`, `~/.opencode`, `~/.copilot`).
+- **Tool Updates:** Integrated Gemini CLI, Pi Coding Agent, and OpenCode into backend catalogs and UI. Researched and applied latest 2026 configuration patterns (e.g., modular `GEMINI.md` with @file, `AGENTS.md` standardization, `.claude/rules/`, `.github/hooks.json`).
+- **Backend Refinement:** Updated `AppConfig` with new global directories (~/.gemini, ~/.pi/agent, ~/.opencode, ~/.copilot).
 - **UI Dashboard:** Implemented "Agent Capabilities" dashboard to aggregate Skills, Hooks, MCP Servers, and Instructions from the project graph. Updated `MENU_ITEMS` and sidebar navigation.
 - **Verification:** Verified with `cargo check` and `npm run build`.
 **Outcome:** Success. Project discovery and artifact mapping are now highly accurate for the latest AI tools.
@@ -32,9 +32,6 @@
 **Outcome:** Success. Codebase complexity is significantly reduced; service layer is now clean and extensible.
 **Insight:** When modularizing, ensure cache keys for global resources are project-agnostic to prevent redundant I/O across different project scans.
 **Promoted:** yes
-
----
-
 ### [2026-04-06] UI Recreation and Modernization
 
 **Context:** The UI was functional but lacked visual hierarchy and professional polish. User goal: "find projects, analyze per editor/ai combo, view those files, edit/revert ai harnesses".
