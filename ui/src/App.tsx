@@ -4,6 +4,7 @@ import { InspectTree } from "./components/InspectTree";
 import { ScanStatusBar } from "./components/ScanStatusBar";
 import { SidebarNav } from "./components/SidebarNav";
 import { ViewerPane } from "./components/ViewerPane";
+import { CapabilitiesDashboard } from "./components/CapabilitiesDashboard";
 import { formatDisplayPath, getNodeLabel, LABELS } from "./lib/inspect";
 import { projectKindLabel } from "./lib/projects";
 import { useInspectController } from "./hooks/useInspectController";
@@ -179,6 +180,10 @@ export function App() {
                 </div>
               </div>
             </div>
+          )}
+
+          {controller.activeTab === "Capabilities" && (
+            <CapabilitiesDashboard graph={controller.graph} />
           )}
 
           {controller.activeTab === "Activity" && (

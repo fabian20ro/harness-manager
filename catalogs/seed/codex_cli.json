@@ -2,38 +2,23 @@
   "surface": "codex_cli",
   "family": "codex",
   "display_name": "Codex CLI",
-  "version": "2026-03-29",
+  "version": "2026-04-06",
   "support_level": "full",
-  "sources": [
-    {
-      "label": "OpenAI Codex Skills",
-      "url": "https://developers.openai.com/codex/skills"
-    },
-    {
-      "label": "OpenAI Codex Build Plugins",
-      "url": "https://developers.openai.com/codex/plugins/build"
-    }
-  ],
+  "sources": [],
   "known_locations": [
     {
-      "path": "~/.codex/config.toml",
+      "path": "~/.codex",
       "scope_type": "global_user",
-      "artifact_type": "config",
-      "reason": "Global Codex CLI config.",
-      "states": ["declared", "effective"]
+      "artifact_type": "directory",
+      "reason": "Global Codex settings root.",
+      "states": ["declared"]
     }
   ],
   "artifact_rules": [
     {
       "glob": "AGENTS.md",
       "artifact_type": "instructions",
-      "reason": "Repo instructions for Codex CLI.",
-      "states": ["declared", "effective"]
-    },
-    {
-      "glob": ".codex/**/*.toml",
-      "artifact_type": "config",
-      "reason": "Project Codex CLI config.",
+      "reason": "Repo instructions for Codex.",
       "states": ["declared", "effective"]
     }
   ],
@@ -41,46 +26,11 @@
     {
       "glob": "AGENTS.md",
       "kind": "workspace_candidate",
-      "score": 220,
+      "score": 180,
       "reason": "Workspace contains AGENTS.md.",
       "root_strategy": { "type": "match_parent" }
-    },
-    {
-      "glob": ".codex/config.toml",
-      "kind": "workspace_candidate",
-      "score": 210,
-      "reason": "Workspace contains .codex/config.toml.",
-      "root_strategy": { "type": "levels_up", "count": 2 },
-      "skip_if_scan_root": true
-    },
-    {
-      "glob": ".codex/**/.codex-plugin/plugin.json",
-      "kind": "plugin_package",
-      "score": 130,
-      "reason": "Plugin package contains .codex-plugin.",
-      "root_strategy": { "type": "levels_up", "count": 1 }
-    },
-    {
-      "glob": ".codex/**/.mcp.json",
-      "kind": "plugin_package",
-      "score": 120,
-      "reason": "Plugin package contains .mcp.json.",
-      "root_strategy": { "type": "match_parent" }
-    },
-    {
-      "glob": ".codex/**/skills/*/SKILL.md",
-      "kind": "plugin_package",
-      "score": 110,
-      "reason": "Plugin package contains SKILL.md.",
-      "root_strategy": { "type": "nearest_plugin_root" }
     }
   ],
   "observed_probes": ["ps:codex"],
-  "plugin_system": {
-    "system": "codex",
-    "install_roots": ["~/.codex/plugins"],
-    "manifest_paths": [".codex-plugin/plugin.json"],
-    "config_paths": ["~/.codex/config.toml", "{project}/.codex/config.toml"],
-    "compatibility": ["codex", "codex_cli"]
-  }
+  "plugin_system": null
 }

@@ -9,6 +9,8 @@ export const TOOL_IDS = [
   "codex_cli",
   "copilot_cli",
   "intellij_copilot",
+  "gemini_cli",
+  "pi_coding_agent",
   "opencode",
   "antigravity",
 ] as const;
@@ -20,6 +22,8 @@ export const LABELS: Record<(typeof TOOL_IDS)[number], string> = {
   codex_cli: "Codex CLI",
   copilot_cli: "Copilot CLI",
   intellij_copilot: "IntelliJ/Copilot",
+  gemini_cli: "Gemini CLI",
+  pi_coding_agent: "Pi Coding Agent",
   opencode: "OpenCode",
   antigravity: "Antigravity",
 };
@@ -29,7 +33,8 @@ export const MENU_ITEMS = [
   { id: "Docs", label: "Docs", emoji: "📚" },
   { id: "Tool", label: "Tool", emoji: "🛠️" },
   { id: "Inspect", label: "Inspect", emoji: "🔎" },
-  { id: "Activity", label: "Activity", emoji: "⚡" },
+  { id: "Capabilities", label: "Capabilities", emoji: "⚡" },
+  { id: "Activity", label: "Activity", emoji: "🕒" },
 ] as const;
 
 export type AppTab = (typeof MENU_ITEMS)[number]["id"];

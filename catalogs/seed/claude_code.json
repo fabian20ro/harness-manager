@@ -2,12 +2,12 @@
   "surface": "claude_code",
   "family": "claude",
   "display_name": "Claude Code",
-  "version": "2026-03-30",
+  "version": "2026-04-06",
   "support_level": "full",
   "sources": [
     {
-      "label": "Anthropic Knowledge Work Plugins",
-      "url": "https://github.com/anthropics/knowledge-work-plugins"
+      "label": "Anthropic Claude Code Docs",
+      "url": "https://docs.anthropic.com/claude/docs/claude-code"
     }
   ],
   "known_locations": [
@@ -15,7 +15,7 @@
       "path": "~/.claude",
       "scope_type": "global_user",
       "artifact_type": "directory",
-      "reason": "Global Claude settings root.",
+      "reason": "Global Claude settings and instructions root.",
       "states": ["declared"]
     }
   ],
@@ -27,16 +27,34 @@
       "states": ["declared", "effective"]
     },
     {
-      "glob": ".claude/**/*.json",
+      "glob": "AGENTS.md",
+      "artifact_type": "instructions",
+      "reason": "Standardized agent rules.",
+      "states": ["declared", "effective"]
+    },
+    {
+      "glob": ".claude/settings.json",
       "artifact_type": "config",
-      "reason": "Claude project config.",
+      "reason": "Shared project settings.",
+      "states": ["declared", "effective"]
+    },
+    {
+      "glob": ".claude/settings.local.json",
+      "artifact_type": "config",
+      "reason": "Local project overrides.",
       "states": ["declared"]
     },
     {
-      "glob": ".claude/**/*.md",
-      "artifact_type": "local_doc",
-      "reason": "Claude local docs or rules.",
+      "glob": ".claude/rules/**/*.md",
+      "artifact_type": "instructions",
+      "reason": "Modular project rules.",
       "states": ["declared"]
+    },
+    {
+      "glob": "~/.claude/CLAUDE.md",
+      "artifact_type": "instructions",
+      "reason": "Global user instructions.",
+      "states": ["declared", "effective"]
     }
   ],
   "project_discovery_rules": [
@@ -48,27 +66,19 @@
       "root_strategy": { "type": "match_parent" }
     },
     {
-      "glob": ".claude/config.json",
+      "glob": ".claude/settings.json",
       "kind": "workspace_candidate",
       "score": 205,
-      "reason": "Workspace contains .claude/config.json.",
-      "root_strategy": { "type": "levels_up", "count": 2 },
-      "skip_if_scan_root": true
-    },
-    {
-      "glob": ".claude/**/.claude-plugin/plugin.json",
-      "kind": "plugin_package",
-      "score": 130,
-      "reason": "Plugin package contains .claude-plugin.",
+      "reason": "Workspace contains .claude/settings.json.",
       "root_strategy": { "type": "levels_up", "count": 1 }
     }
   ],
   "observed_probes": ["ps:claude"],
   "plugin_system": {
     "system": "claude",
-    "install_roots": ["~/.claude/plugins", "~/.config/claude/plugins"],
-    "manifest_paths": [".claude-plugin/plugin.json", "plugin.json", "package.json"],
-    "config_paths": ["~/.claude/config.json", "{project}/.claude/config.json"],
+    "install_roots": ["~/.claude/plugins"],
+    "manifest_paths": [".claude-plugin/plugin.json", "plugin.json"],
+    "config_paths": ["~/.claude/settings.json", "{project}/.claude/settings.json"],
     "compatibility": ["claude_code", "claude_cowork"]
   }
 }

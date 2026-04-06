@@ -2,43 +2,57 @@
   "surface": "antigravity",
   "family": "antigravity",
   "display_name": "Antigravity",
-  "version": "2026-03-29",
-  "support_level": "experimental",
+  "version": "2026-04-06",
+  "support_level": "full",
   "sources": [
     {
-      "label": "Antigravity skills",
-      "url": "https://antigravity.google/docs/skills"
+      "label": "Antigravity Codes",
+      "url": "https://antigravity.codes"
     }
   ],
   "known_locations": [
     {
-      "path": "~/.config/antigravity",
+      "path": "~/.gemini",
       "scope_type": "global_user",
       "artifact_type": "directory",
       "reason": "Global Antigravity settings root.",
       "states": ["declared"]
+    },
+    {
+      "path": "~/.gemini/GEMINI.md",
+      "scope_type": "global_user",
+      "artifact_type": "instructions",
+      "reason": "Global Antigravity instructions.",
+      "states": ["declared", "effective"]
     }
   ],
   "artifact_rules": [
     {
-      "glob": ".antigravity/**/*",
-      "artifact_type": "config",
-      "reason": "Antigravity project config.",
+      "glob": "GEMINI.md",
+      "artifact_type": "instructions",
+      "reason": "Repo instructions for Antigravity.",
       "states": ["declared", "effective"]
     },
     {
-      "glob": "ANTIGRAVITY.md",
+      "glob": "AGENTS.md",
       "artifact_type": "instructions",
-      "reason": "Repo instructions for Antigravity.",
-      "states": ["declared"]
+      "reason": "Standardized agent rules.",
+      "states": ["declared", "effective"]
     }
   ],
   "project_discovery_rules": [
     {
-      "glob": "ANTIGRAVITY.md",
+      "glob": "GEMINI.md",
+      "kind": "workspace_candidate",
+      "score": 215,
+      "reason": "Workspace contains GEMINI.md.",
+      "root_strategy": { "type": "match_parent" }
+    },
+    {
+      "glob": "AGENTS.md",
       "kind": "workspace_candidate",
       "score": 190,
-      "reason": "Workspace contains ANTIGRAVITY.md.",
+      "reason": "Workspace contains AGENTS.md.",
       "root_strategy": { "type": "match_parent" }
     }
   ],

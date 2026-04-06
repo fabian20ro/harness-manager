@@ -64,6 +64,8 @@ function TreeBranch({
   return (
     <div className="tree-branch">
       <div 
+        role="button"
+        aria-label={node.nodeId ? `Select ${node.label}` : (isExpanded ? `Collapse ${node.label}` : `Expand ${node.label}`)}
         className={`tree-node ${selected ? 'active' : ''}`} 
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         onClick={handleRowClick}
