@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JobStatus, SurfaceState } from "../../lib/types";
 import {
   buildInspectTree,
@@ -153,22 +153,22 @@ export function useGraphState({
     }
   }
 
-  function toggleExpandedKey(key: string) {
+  const toggleExpandedKey = useCallback((key: string) => {
     setHasStoredExpandedTreeState(true);
     setExpandedTreeKeys((current) =>
       current.includes(key) ? current.filter((entry) => entry !== key) : [...current, key],
     );
-  }
+  }, []);
 
-  function expandAllTree() {
+  const expandAllTree = useCallback(() => {
     setHasStoredExpandedTreeState(true);
     setExpandedTreeKeys(allTreeKeys);
-  }
+  }, [allTreeKeys]);
 
-  function collapseAllTree() {
+  const collapseAllTree = useCallback(() => {
     setHasStoredExpandedTreeState(true);
     setExpandedTreeKeys([]);
-  }
+  }, []);
 
   return {
     graph,
