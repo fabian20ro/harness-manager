@@ -32,9 +32,9 @@ export function CapabilitiesDashboard({ graph }: CapabilitiesDashboardProps) {
   );
 }
 
-function CapabilitySection({ title, items, verdicts, emoji }: { 
-  title: string; 
-  items: GraphNodeRecord[]; 
+function CapabilitySection({ title, items, verdicts, emoji }: {
+  title: string;
+  items: GraphNodeRecord[];
   verdicts: SurfaceState["verdicts"];
   emoji: string;
 }) {
@@ -83,11 +83,11 @@ function StatusBadge({ usage }: { usage: string }) {
   };
 
   return (
-    <span style={{ 
-      fontSize: '0.65rem', 
-      padding: '2px 6px', 
-      borderRadius: '4px', 
-      background: `var(--${statusColor(usage)}-bg)`, 
+    <span style={{
+      fontSize: '0.65rem',
+      padding: '2px 6px',
+      borderRadius: '4px',
+      background: `var(--${statusColor(usage)}-bg)`,
       color: `var(--${statusColor(usage)})`,
       fontWeight: 'bold',
       textTransform: 'uppercase'
@@ -105,3 +105,4 @@ function statusColor(usage: string) {
     default: return 'muted';
   }
 }
+

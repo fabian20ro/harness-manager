@@ -342,6 +342,11 @@ button:disabled {
   background: var(--panel-hover);
 }
 
+.tree-node:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
 .tree-node.active {
   background: var(--primary-soft);
   color: var(--primary);

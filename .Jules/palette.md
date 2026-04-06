@@ -1,0 +1,3 @@
+## 2024-05-24 - Interactive ARIA element focus
+**Learning:** Custom interactive elements masquerading as buttons via `onClick` must have explicit role, tabindex, and keyboard event handlers (like space/enter keydown) to be accessible. Specifically, dynamic `aria-label`s must match the actual row action (e.g. "Select") rather than an inner target (e.g. "Expand"/"Collapse" arrow) to avoid misleading screen reader announcements.
+**Action:** Always add `role="button"`, `tabIndex={0}`, an appropriate static `aria-label`, and `onKeyDown` listeners to `div`s or `span`s that are interactive. Verify that the aria-label correctly describes the outer row action.

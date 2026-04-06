@@ -1,0 +1,19 @@
+
+> harness-inspector-ui@0.1.0 dev /app/ui
+> vite
+
+
+  VITE v7.3.1  ready in 353 ms
+
+  ➜  Local:   http://localhost:4173/
+  ➜  Network: use --host to expose
+10:56:44 AM [vite] http proxy error: /api/projects
+Error: connect ECONNREFUSED 127.0.0.1:8765
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:56:44 AM [vite] http proxy error: /api/events
+Error: connect ECONNREFUSED 127.0.0.1:8765
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:56:44 AM [vite] http proxy error: /api/projects
+Error: connect ECONNREFUSED 127.0.0.1:8765
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+ ELIFECYCLE  Command failed with exit code 143.

@@ -39,10 +39,10 @@ describe("InspectTree", () => {
     );
 
     // Testing the inner element that actually has the class
-    const agentsRow = screen.getByRole("button", { name: /AGENTS.md/ });
+    const agentsRow = screen.getByRole("button", { name: "Select AGENTS.md" });
     expect(agentsRow.querySelector('.usage-used')).toBeInTheDocument();
 
-    const missingRow = screen.getByRole("button", { name: /missing.md/ });
+    const missingRow = screen.getByRole("button", { name: "Select missing.md" });
     expect(missingRow.querySelector('.usage-broken')).toBeInTheDocument();
   });
 
@@ -105,8 +105,7 @@ describe("InspectTree", () => {
       />,
     );
 
-    const arrow = screen.getAllByText("▾")[1];
-    fireEvent.click(arrow);
+    fireEvent.click(screen.getByRole("button", { name: "Collapse git" }));
     expect(onToggleExpand).toHaveBeenCalledWith("~/git");
     fireEvent.click(screen.getByRole("button", { name: "Select AGENTS.md" }));
     expect(onSelect).toHaveBeenCalledWith("agents");
@@ -170,8 +169,7 @@ describe("InspectTree", () => {
       />,
     );
 
-    const arrow = screen.getAllByText("▾")[1];
-    fireEvent.click(arrow);
+    fireEvent.click(screen.getByRole("button", { name: "Collapse git" }));
     expect(onToggleExpand).toHaveBeenCalledWith("~/git");
   });
 });
