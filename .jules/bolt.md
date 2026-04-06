@@ -1,1 +1,5 @@
 ## 2026-03-29 - O(N^2) Tree Building with Map Lookups\n**Learning:** The frontend used Array.prototype.find inside nested loops to match artifact graph verdicts in `buildInspectTree` and `calculateContextCost`. For large graphs, this scales poorly to O(N^2) time complexity, potentially locking up the main thread on render.\n**Action:** Replaced O(N^2) nested array find with O(N) hash map lookup (Map) for O(1) reads of verdicts array, ensuring fast and smooth UI response scaling.
+
+## 2026-04-06 - Unmemoized React Arrays cause O(N) DOM reconciliations
+**Learning:** React array rendering without memoized inner items (`TreeBranch` rendering `TreeNodeRow`) caused massive O(N) DOM reconciliations per interaction when checking large context graphs. Even if `TreeBranch` couldn't be purely memoized due to recursive structures, memoizing the DOM element itself (`TreeNodeRow`) solves the problem perfectly.
+**Action:** Always memoize the inner DOM-rendering component of a recursive list when it depends on primitive checks (`isSelected`, `isExpanded`), effectively turning O(N) DOM re-renders into O(1) on state change.

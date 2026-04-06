@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { type InspectTreeNode } from "../lib/inspect";
 
 type InspectTreeProps = {
@@ -53,56 +54,17 @@ function TreeBranch({
   const isExpanded = expanded.has(node.key);
   const hasChildren = node.children.length > 0;
 
-  const handleRowClick = () => {
-    if (node.nodeId) {
-      onSelect(node.nodeId);
-    } else if (hasChildren) {
-      onToggleExpand(node.key);
-    }
-  };
-
   return (
     <div className="tree-branch">
-      <div 
-        role="button"
-        tabIndex={0}
-        aria-label={node.nodeId ? `Select ${node.label}` : (isExpanded ? `Collapse ${node.label}` : `Expand ${node.label}`)}
-        className={`tree-node ${selected ? 'active' : ''}`} 
-        style={{ paddingLeft: `${depth * 16 + 8}px` }}
-        onClick={handleRowClick}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            handleRowClick();
-          }
-        }}
-      >
-        <span 
-          style={{ 
-            width: '16px', 
-            display: 'flex', 
-            justifyContent: 'center', 
-            cursor: 'pointer',
-            opacity: hasChildren ? 1 : 0 
-          }}
-          onClick={(e) => {
-            if (hasChildren) {
-              e.stopPropagation();
-              onToggleExpand(node.key);
-            }
-          }}
-          aria-hidden="true"
-        >
-          {hasChildren ? (isExpanded ? "▾" : "▸") : ""}
-        </span>
-        <span className={`tree-node-indicator usage-${node.usageState}`} style={{ fontSize: '0.6rem' }} aria-hidden="true">
-          {node.usageState === "used" ? "●" : node.usageState === "broken" ? "!" : node.usageState === "proposed" ? "◩" : "○"}
-        </span>
-        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {node.path.includes('/agents/') && node.path.endsWith('.md') ? "🤖 " : node.path.includes('/skills/') && node.path.endsWith('.md') ? "⚡ " : ""}
-          {node.label}
-        </span>
-      </div>
+      <TreeNodeRow
+        node={node}
+        depth={depth}
+        isSelected={selected}
+        isExpanded={isExpanded}
+        hasChildren={hasChildren}
+        onSelect={onSelect}
+        onToggleExpand={onToggleExpand}
+      />
       {hasChildren && isExpanded
         ? node.children.map((child) => (
             <TreeBranch
@@ -119,3 +81,74 @@ function TreeBranch({
     </div>
   );
 }
+
+type TreeNodeRowProps = {
+  node: InspectTreeNode;
+  depth: number;
+  isSelected: boolean;
+  isExpanded: boolean;
+  hasChildren: boolean;
+  onSelect: (nodeId: string) => void;
+  onToggleExpand: (key: string) => void;
+};
+
+const TreeNodeRow = memo(function TreeNodeRow({
+  node,
+  depth,
+  isSelected,
+  isExpanded,
+  hasChildren,
+  onSelect,
+  onToggleExpand,
+}: TreeNodeRowProps) {
+  const handleRowClick = () => {
+    if (node.nodeId) {
+      onSelect(node.nodeId);
+    } else if (hasChildren) {
+      onToggleExpand(node.key);
+    }
+  };
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={node.nodeId ? `Select ${node.label}` : (isExpanded ? `Collapse ${node.label}` : `Expand ${node.label}`)}
+      className={`tree-node ${isSelected ? 'active' : ''}`}
+      style={{ paddingLeft: `${depth * 16 + 8}px` }}
+      onClick={handleRowClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleRowClick();
+        }
+      }}
+    >
+      <span
+        style={{
+          width: '16px',
+          display: 'flex',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          opacity: hasChildren ? 1 : 0
+        }}
+        onClick={(e) => {
+          if (hasChildren) {
+            e.stopPropagation();
+            onToggleExpand(node.key);
+          }
+        }}
+        aria-hidden="true"
+      >
+        {hasChildren ? (isExpanded ? "▾" : "▸") : ""}
+      </span>
+      <span className={`tree-node-indicator usage-${node.usageState}`} style={{ fontSize: '0.6rem' }} aria-hidden="true">
+        {node.usageState === "used" ? "●" : node.usageState === "broken" ? "!" : node.usageState === "proposed" ? "◩" : "○"}
+      </span>
+      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {node.path.includes('/agents/') && node.path.endsWith('.md') ? "🤖 " : node.path.includes('/skills/') && node.path.endsWith('.md') ? "⚡ " : ""}
+        {node.label}
+      </span>
+    </div>
+  );
+});
