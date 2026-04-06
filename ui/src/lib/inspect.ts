@@ -85,15 +85,25 @@ export function pickNextSelectedNode(
     return previousNodeId;
   }
 
+  const verdictsMap = new Map<string, string[]>();
+  for (const verdict of verdicts) {
+    verdictsMap.set(verdict.entity_id, verdict.states);
+  }
+
   const byPriority = [...nodes]
     .filter((node) => node.kind !== "tool_context")
-    .sort((left, right) => scoreNode(left, verdicts) - scoreNode(right, verdicts));
+    .sort((left, right) => scoreStates(verdictsMap.get(left.id) ?? []) - scoreStates(verdictsMap.get(right.id) ?? []));
 
   return byPriority[0]?.id ?? "";
 }
 
 export function buildInspectTree(graph: SurfaceState | null): InspectTreeNode[] {
   if (!graph) return [];
+
+  const verdictsMap = new Map<string, string[]>();
+  for (const verdict of graph.verdicts) {
+    verdictsMap.set(verdict.entity_id, verdict.states);
+  }
 
   const rootMap = new Map<string, TrieNode>();
   const entries = [
@@ -109,7 +119,7 @@ export function buildInspectTree(graph: SurfaceState | null): InspectTreeNode[] 
         nodeId: node.id,
         path: getNodeDisplayPath(node),
         label: typeof node.name === "string" ? node.name : undefined,
-        states: graph.verdicts.find((verdict) => verdict.entity_id === node.id)?.states ?? [],
+        states: verdictsMap.get(node.id) ?? [],
       }))
       .filter((entry) => isPathBearing(entry.path)),
   ];
@@ -246,10 +256,6 @@ function collectSelectedAncestors(
   return matches || descendantMatches;
 }
 
-function scoreNode(node: GraphNodeRecord, verdicts: SurfaceState["verdicts"]) {
-  return scoreStates(verdicts.find((verdict) => verdict.entity_id === node.id)?.states ?? []);
-}
-
 function scoreStates(states: string[]) {
   if (states.includes("effective")) return 0;
   if (states.includes("misleading")) return 1;
@@ -274,11 +280,14 @@ export function usageStateForStates(states: string[]): "used" | "unused" | "brok
 export function calculateContextCost(graph: SurfaceState | null): { bytes: number; warning: boolean } {
   if (!graph) return { bytes: 0, warning: false };
 
+  const verdictsMap = new Map<string, string[]>();
+  for (const verdict of graph.verdicts) {
+    verdictsMap.set(verdict.entity_id, verdict.states);
+  }
+
   const bytes = graph.nodes.reduce((acc, node) => {
     if (typeof node.byte_size === "number") {
-      const usage = usageStateForStates(
-        graph.verdicts.find((v) => v.entity_id === node.id)?.states ?? []
-      );
+      const usage = usageStateForStates(verdictsMap.get(node.id) ?? []);
       if (usage === "used" || usage === "proposed") {
         return acc + node.byte_size;
       }
