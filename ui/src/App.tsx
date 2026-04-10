@@ -23,13 +23,19 @@ export function App() {
   return (
     <div className={controller.sidebarCollapsed ? "shell shell-collapsed" : "shell"}>
       <SidebarNav
-        activeTab={controller.activeTab}
-        collapsed={controller.sidebarCollapsed}
-        globalReindexLabel={controller.isGlobalScanRunning ? "Reindexing..." : "Reindex all"}
-        isGlobalReindexRunning={controller.isGlobalScanRunning}
-        onSelectTab={controller.setActiveTab}
-        onToggleCollapse={() => controller.setSidebarCollapsed((value) => !value)}
-        onReindex={() => void controller.runGlobalScan().catch(() => {})}
+        navigation={{
+          activeTab: controller.activeTab,
+          onSelectTab: controller.setActiveTab,
+        }}
+        collapse={{
+          collapsed: controller.sidebarCollapsed,
+          onToggleCollapse: () => controller.setSidebarCollapsed((value) => !value),
+        }}
+        reindex={{
+          label: controller.isGlobalScanRunning ? "Reindexing..." : "Reindex all",
+          isRunning: controller.isGlobalScanRunning,
+          onReindex: () => void controller.runGlobalScan().catch(() => {}),
+        }}
       />
 
       <main className={inspectMode ? "workspace inspect-mode" : "workspace"}>

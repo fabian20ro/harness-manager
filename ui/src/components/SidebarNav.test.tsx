@@ -7,12 +7,18 @@ describe("SidebarNav", () => {
   it("renders emoji-prefixed nav without helper command UI", () => {
     render(
       <SidebarNav
-        activeTab="Projects"
-        collapsed={false}
-        globalReindexLabel="Reindex all"
-        onSelectTab={() => {}}
-        onToggleCollapse={() => {}}
-        onReindex={() => {}}
+        navigation={{
+          activeTab: "Projects",
+          onSelectTab: () => {},
+        }}
+        collapse={{
+          collapsed: false,
+          onToggleCollapse: () => {},
+        }}
+        reindex={{
+          label: "Reindex all",
+          onReindex: () => {},
+        }}
       />,
     );
 
@@ -27,12 +33,18 @@ describe("SidebarNav", () => {
     const onToggleCollapse = vi.fn();
     const view = render(
       <SidebarNav
-        activeTab="Projects"
-        collapsed={false}
-        globalReindexLabel="Reindex all"
-        onSelectTab={() => {}}
-        onToggleCollapse={onToggleCollapse}
-        onReindex={() => {}}
+        navigation={{
+          activeTab: "Projects",
+          onSelectTab: () => {},
+        }}
+        collapse={{
+          collapsed: false,
+          onToggleCollapse,
+        }}
+        reindex={{
+          label: "Reindex all",
+          onReindex: () => {},
+        }}
       />,
     );
 
@@ -43,12 +55,18 @@ describe("SidebarNav", () => {
   it("shows compact H brand when collapsed", () => {
     render(
       <SidebarNav
-        activeTab="Projects"
-        collapsed
-        globalReindexLabel="Reindex all"
-        onSelectTab={() => {}}
-        onToggleCollapse={() => {}}
-        onReindex={() => {}}
+        navigation={{
+          activeTab: "Projects",
+          onSelectTab: () => {},
+        }}
+        collapse={{
+          collapsed: true,
+          onToggleCollapse: () => {},
+        }}
+        reindex={{
+          label: "Reindex all",
+          onReindex: () => {},
+        }}
       />,
     );
 

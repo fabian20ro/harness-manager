@@ -1,23 +1,29 @@
 import { MENU_ITEMS, type AppTab } from "../lib/inspect";
 
 type SidebarNavProps = {
-  activeTab: AppTab;
-  collapsed: boolean;
-  globalReindexLabel?: string;
-  isGlobalReindexRunning?: boolean;
-  onSelectTab: (tab: AppTab) => void;
-  onToggleCollapse: () => void;
-  onReindex: () => void;
+  navigation: {
+    activeTab: AppTab;
+    onSelectTab: (tab: AppTab) => void;
+  };
+  collapse: {
+    collapsed: boolean;
+    onToggleCollapse: () => void;
+  };
+  reindex: {
+    label?: string;
+    isRunning?: boolean;
+    onReindex: () => void;
+  };
 };
 
 export function SidebarNav({
-  activeTab,
-  collapsed,
-  globalReindexLabel = "Reindex all",
-  isGlobalReindexRunning = false,
-  onSelectTab,
-  onToggleCollapse,
-  onReindex,
+  navigation: { activeTab, onSelectTab },
+  collapse: { collapsed, onToggleCollapse },
+  reindex: {
+    label: globalReindexLabel = "Reindex all",
+    isRunning: isGlobalReindexRunning = false,
+    onReindex,
+  },
 }: SidebarNavProps) {
   return (
     <aside className={collapsed ? "nav collapsed" : "nav"}>
