@@ -1,4 +1,10 @@
-## 2024-05-18 - [Path Traversal Fix]
-**Vulnerability:** The application was vulnerable to path traversal because `PathBuf::join` was being called with user-supplied inputs (`project_id`, `tool`, `node_id`) in `src/storage.rs`, which allowed an attacker to break out of the intended directory structure.
-**Learning:** `Path::new(name).file_name()` returns `None` for names ending in `.` or `..`, so it is not a sufficient defense on its own when falling back to the original string.
-**Prevention:** Explicitly handle inputs consisting entirely of traversal tokens (like `..`) by ensuring `file_name()` results aren't bypassed or manually replacing `.`, `/`, and `\` tokens.
+## 2026-04-06 - System Process Information Disclosure
+
+**Vulnerability:** Information disclosure via unrestricted process list capture and cross-project leaks.
+
+**Learning:** Shelling out to `ps` and capturing its output without strict project-root matching can expose sensitive system-wide process information. On Linux, `/proc` is a more robust and direct source for process information, but it is platform-specific.
+
+**Prevention:**
+1. Use direct system APIs or virtual filesystems (like `/proc`) instead of shelling out.
+2. Implement strict filtering based on project-specific markers (e.g., project root path) to isolate process capture.
+3. Handle platform-specific collection methods gracefully to maintain portability.
