@@ -10,7 +10,7 @@ export type ProjectSummary = {
   status: string;
 };
 
-export type ToolContext = {
+type ToolContext = {
   id: string;
   display_name: string;
   support_level: string;
