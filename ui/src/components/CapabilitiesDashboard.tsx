@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { SurfaceState, GraphNodeRecord } from "../lib/types";
 import { getNodeLabel, usageStateForStates } from "../lib/inspect";
 
@@ -17,10 +18,10 @@ export function CapabilitiesDashboard({ graph }: CapabilitiesDashboardProps) {
   const nodes = graph.nodes;
   const verdicts = graph.verdicts;
 
-  const skills = nodes.filter(n => n.artifact_type === 'skill');
-  const hooks = nodes.filter(n => n.artifact_type === 'hook' || n.artifact_type === 'script');
-  const mcpServers = nodes.filter(n => n.artifact_type === 'mcp');
-  const instructions = nodes.filter(n => n.artifact_type === 'instructions' || n.artifact_type === 'agent');
+  const skills = useMemo(() => nodes.filter(n => n.artifact_type === 'skill'), [nodes]);
+  const hooks = useMemo(() => nodes.filter(n => n.artifact_type === 'hook' || n.artifact_type === 'script'), [nodes]);
+  const mcpServers = useMemo(() => nodes.filter(n => n.artifact_type === 'mcp'), [nodes]);
+  const instructions = useMemo(() => nodes.filter(n => n.artifact_type === 'instructions' || n.artifact_type === 'agent'), [nodes]);
 
   return (
     <div style={{ display: 'grid', gap: '24px' }}>

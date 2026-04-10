@@ -81,3 +81,9 @@
 **Promoted:** no
 
 ... rest of file ...
+
+## Iteration 1 - 2026-04-08
+- Removed unused 'export' from 'ToolContext' in 'ui/src/lib/types.ts'.
+- Added 'useMemo' to 'CapabilitiesDashboard.tsx' to optimize artifact filtering.
+- Observed that 'ToolContext' is used by 'SurfaceState' in the same file, so it was kept as a private type.
+- Network restrictions in the sandbox prevented running full build and tests, but static analysis confirmed safety.
