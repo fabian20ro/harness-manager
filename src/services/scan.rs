@@ -63,14 +63,16 @@ pub fn load_catalogs(store: &Store) -> Result<HashMap<String, ToolCatalog>> {
 pub fn scan_projects(
     config: &AppConfig,
     store: &Store,
+    jobs: &crate::services::jobs::JobRegistry,
     roots: Option<Vec<String>>,
 ) -> Result<Vec<ProjectSummary>> {
-    scan_projects_with_progress(config, store, roots, |_| Ok(()))
+    scan_projects_with_progress(config, store, jobs, roots, |_| Ok(()))
 }
 
 pub fn scan_projects_with_progress<F>(
     config: &AppConfig,
     store: &Store,
+    jobs: &crate::services::jobs::JobRegistry,
     roots: Option<Vec<String>>,
     mut on_progress: F,
 ) -> Result<Vec<ProjectSummary>>
@@ -111,6 +113,11 @@ where
         &config.home_dir,
         &mut on_progress_adapter,
     )?;
+
+    // Register all roots with the watcher
+    for root in &roots {
+        let _ = jobs.watch_path(root);
+    }
 
     let mut summaries = Vec::new();
     let total_projects = project_candidates.len();
@@ -173,10 +180,10 @@ pub fn rebuild_surface_state(
     store.write_json(&store.tool_state_path(project_id, tool), &state)?;
     Ok(state)
 }
-
 pub fn reindex_project_tool_with_progress<F>(
     config: &AppConfig,
     store: &Store,
+    jobs: &crate::services::jobs::JobRegistry,
     project_id: &str,
     tool: &str,
     mut on_progress: F,
@@ -185,7 +192,6 @@ where
     F: FnMut(ScanProgress) -> Result<()>,
 {
     store.ensure_layout()?;
-    let mut scan_run = ScanRunContext::default();
     let mut projects = store
         .maybe_read_json::<Vec<ProjectSummary>>(&store.projects_index_path())?
         .unwrap_or_default();
@@ -195,6 +201,8 @@ where
         .context("project not found in index")?;
     let project = projects[project_index].clone();
     let repo_root = PathBuf::from(&project.root_path);
+    let _ = jobs.watch_path(&repo_root);
+
     let repo_display_path = display_path(&repo_root, &config.home_dir);
     let catalogs = load_catalogs(store)?;
     let catalog = catalogs.get(tool).context("tool catalog not found")?;
@@ -238,6 +246,7 @@ where
         items_total: Some(1),
     })?;
 
+    let mut scan_run = ScanRunContext::default();
     let state = build_surface_state_with_context(
         config,
         store,

@@ -57,6 +57,20 @@
       "states": ["declared", "effective"]
     }
   ],
+  "validation_rules": [
+    {
+      "type": "env_var_presence",
+      "target": "ANTHROPIC_API_KEY",
+      "severity": "critical",
+      "description": "Anthropic API Key required for Claude Code."
+    },
+    {
+      "type": "file_schema",
+      "target": "CLAUDE.md",
+      "severity": "warning",
+      "description": "CLAUDE.md should contain project context and guidelines."
+    }
+  ],
   "project_discovery_rules": [
     {
       "glob": "CLAUDE.md",

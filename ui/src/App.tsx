@@ -8,6 +8,7 @@ import { CapabilitiesDashboard } from "./components/CapabilitiesDashboard";
 import { formatDisplayPath, getNodeLabel, LABELS } from "./lib/inspect";
 import { projectKindLabel } from "./lib/projects";
 import { useInspectController } from "./hooks/useInspectController";
+import { type HealthReport } from "./lib/types";
 
 export function App() {
   const controller = useInspectController();
@@ -164,12 +165,14 @@ export function App() {
                     nodeKey={controller.selectedNode}
                     content={controller.inspect?.viewer_content}
                     metadata={controller.currentNode?.metadata as Record<string, unknown> | undefined}
+                    health={controller.currentNode?.health as HealthReport | undefined}
                     editable={controller.inspect?.edit.editable}
                     versionToken={controller.inspect?.edit.version_token}
                     lastSavedBackupAvailable={controller.inspect?.edit.last_saved_backup_available}
                     onSave={controller.saveInspectContent}
                     onReload={controller.reloadInspectNode}
                     onRevert={controller.revertInspectSave}
+                    onFix={controller.fixInspectCheck}
                   />
                 </div>
               </div>

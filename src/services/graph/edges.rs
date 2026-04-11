@@ -129,6 +129,7 @@ pub fn collect_reference_edges(
                         byte_size: fs::metadata(&hit.resolved_path).map(|m| m.len()).unwrap_or(0),
                         reason: target_reason.clone(),
                         metadata: None,
+                        health: None,
                     }),
                 );
                 existing_path_to_id.insert(target_path.clone(), target_id.clone());
@@ -291,6 +292,7 @@ fn materialize_referenced_directory(
                     byte_size: fs::metadata(&file_path).map(|m| m.len()).unwrap_or(0),
                     reason: reason.clone(),
                     metadata: None,
+                    health: None,
                 }),
             );
             existing_path_to_id.insert(file_path_string.clone(), file_id.clone());

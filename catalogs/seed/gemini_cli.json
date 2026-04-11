@@ -36,7 +36,7 @@
     {
       "glob": "AGENTS.md",
       "artifact_type": "instructions",
-      "reason": "Standardized agent rules.",
+      "reason": "Standardized agent rules for subagent orchestration.",
       "states": ["declared", "effective"]
     },
     {
@@ -56,6 +56,20 @@
       "artifact_type": "instructions",
       "reason": "Proposed Gemini implementation plan.",
       "states": ["proposed"]
+    }
+  ],
+  "validation_rules": [
+    {
+      "type": "env_var_presence",
+      "target": "GEMINI_API_KEY",
+      "severity": "critical",
+      "description": "Valid authentication (API Key or Editor Session) required for Gemini."
+    },
+    {
+      "type": "file_schema",
+      "target": "GEMINI.md",
+      "severity": "warning",
+      "description": "GEMINI.md should contain core mandates and workflow sections."
     }
   ],
   "project_discovery_rules": [

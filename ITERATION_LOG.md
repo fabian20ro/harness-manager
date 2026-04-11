@@ -7,6 +7,20 @@
 
 ---
 
+### [2026-04-11] Periodic AI Agent Config Maintenance
+
+**Context:** audit and synchronize AI agent configuration as per `SETUP_AI_AGENT_CONFIG.md`.
+**Happened:**
+- **Audit:** Confirmed `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, and sub-agents (`.claude/agents/` and `.gemini/plugins/skills/`) align with latest templates and memory hierarchy.
+- **Promotion:** Promoted 3 validated insights (JSX duplicate attributes, plugin manifest expansion, standardized preamble) from `ITERATION_LOG.md` to `LESSONS_LEARNED.md`.
+- **Sync:** Updated `ITERATION_LOG.md` to mark promoted entries as `yes`.
+- **Validation:** Verified PR template contains the necessary checklist.
+**Outcome:** success. Memory layers are lean, non-redundant, and properly categorized.
+**Insight:** Regular promotion of insights from `ITERATION_LOG.md` keeps `LESSONS_LEARNED.md` actionable and prevents the log from becoming an information silo.
+**Promoted:** no
+
+---
+
 ### [2026-04-11] AI Agent Config & Memory System Standardization
 
 **Context:** Project configuration and memory system needed alignment with `SETUP_AI_AGENT_CONFIG.md` guidelines.
@@ -17,7 +31,7 @@
 - **Verification:** Confirmed `.claude/agents/` sub-agents match the latest templates.
 **Outcome:** Success. The project's memory hierarchy (AGENTS, LESSONS_LEARNED, ITERATION_LOG, sub-agents) is now standardized and lean.
 **Insight:** A clear preamble in `AGENTS.md` provides essential non-discoverable constraints that prevent redundant work and ensure consistency across sessions.
-**Promoted:** no
+**Promoted:** yes
 
 ---
 
@@ -30,7 +44,7 @@
 - **Verification:** Verified with `cargo check` and `npm run build && npm test` in the `ui` directory.
 - **Outcome:** Success. PR branch is now up-to-date with `main` and verified as green.
 **Insight:** Auto-merges of JSX can silently introduce duplicate attributes that break TypeScript builds and accessibility-aware tests.
-**Promoted:** no
+**Promoted:** yes
 
 ---
 
@@ -92,7 +106,7 @@
 **Happened:** reproduced the scan locally against the real home/plugin roots; confirmed the visible Codex line was stale and the worker was CPU-bound inside plugin-manifest directory expansion; changed plugin-manifest directory refs to link only already-modeled descendant artifacts instead of recursively materializing every file under referenced directories like `skills/`; kept recursive directory expansion for non-plugin-manifest refs; updated the Codex directory-reference regression to assert existing skill artifacts stay linked while unrelated files inside the directory are not materialized; verified `cargo test`; reran a real local `/api/scan` and confirmed progress advanced past `ComfyUI-Chibi-Nodes` onto later projects instead of pinning there
 **Outcome:** success
 **Insight:** once plugin components are modeled explicitly, manifest directory refs should attach to those existing component nodes, not trigger generic recursive file expansion; otherwise plugin bundles create graph/memory blow-ups that look like frozen scans
-**Promoted:** no
+**Promoted:** yes
 
 ... rest of file ...
 

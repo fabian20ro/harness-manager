@@ -16,6 +16,20 @@ type ToolContext = {
   support_level: string;
 };
 
+export type HealthStatus = "healthy" | "warning" | "critical" | "unknown";
+
+export type CheckResult = {
+  label: string;
+  status: HealthStatus;
+  message: string;
+  fix_available: bool;
+};
+
+export type HealthReport = {
+  overall_status: HealthStatus;
+  checks: CheckResult[];
+};
+
 export type GraphNodeRecord = {
   id: string;
   kind: string;
@@ -25,6 +39,7 @@ export type GraphNodeRecord = {
   root_path?: string;
   name?: string;
   byte_size?: number;
+  health?: HealthReport;
   [key: string]: unknown;
 };
 

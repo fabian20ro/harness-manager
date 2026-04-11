@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { type HealthReport } from "../lib/types";
 
 type ViewerPaneProps = {
   content?: string;
@@ -7,9 +8,11 @@ type ViewerPaneProps = {
   versionToken?: string;
   lastSavedBackupAvailable?: boolean;
   nodeKey: string;
+  health?: HealthReport;
   onSave?: (content: string, versionToken: string) => Promise<void>;
   onReload?: () => Promise<void>;
   onRevert?: () => Promise<void>;
+  onFix?: (checkLabel: string) => Promise<void>;
 };
 
 export function ViewerPane({
@@ -19,9 +22,11 @@ export function ViewerPane({
   versionToken,
   lastSavedBackupAvailable = false,
   nodeKey,
+  health,
   onSave,
   onReload,
   onRevert,
+  onFix,
 }: ViewerPaneProps) {
   const [mode, setMode] = useState<"read" | "edit">("read");
   const [draft, setDraft] = useState(content ?? "");
@@ -127,6 +132,10 @@ export function ViewerPane({
       </div>
       {error ? <p className="viewer-error">{error}</p> : null}
 
+      {health && health.overall_status !== "healthy" && (
+        <HealthSection health={health} onFix={onFix} />
+      )}
+
       {contexts.length > 0 && !showGitignore && (
         <div className="viewer-metadata-section">
           <h3>Context Precedence</h3>
@@ -160,6 +169,49 @@ export function ViewerPane({
       ) : (
         <pre className="viewer-pre">{content ?? "Select a node."}</pre>
       )}
+    </div>
+  );
+}
+
+function HealthSection({ health, onFix }: { health: HealthReport, onFix?: (label: string) => Promise<void> }) {
+  const [fixing, setFixing] = useState<string | null>(null);
+
+  const handleFix = async (label: string) => {
+    if (!onFix) return;
+    setFixing(label);
+    try {
+      await onFix(label);
+    } finally {
+      setFixing(null);
+    }
+  };
+
+  return (
+    <div className={`health-section status-${health.overall_status}`} style={{ margin: "10px", padding: "10px", border: "1px solid #ffbb00", borderRadius: "4px", background: "rgba(255, 187, 0, 0.05)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+        <span>⚠️</span>
+        <strong>Health Report: {health.overall_status.toUpperCase()}</strong>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        {health.checks.map((check, i) => (
+          <div key={i} style={{ borderLeft: `3px solid ${check.status === "critical" ? "#ff4444" : "#ffbb00"}`, paddingLeft: "8px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ fontWeight: "bold", fontSize: "0.9rem" }}>{check.label}</span>
+              <span style={{ fontSize: "0.8rem", opacity: 0.8 }}>({check.status})</span>
+              {check.fix_available && onFix && (
+                <button 
+                  style={{ marginLeft: "auto", fontSize: "0.8rem", padding: "2px 8px" }}
+                  disabled={fixing === check.label}
+                  onClick={() => void handleFix(check.label)}
+                >
+                  {fixing === check.label ? "Fixing..." : "Fix It"}
+                </button>
+              )}
+            </div>
+            <div style={{ fontSize: "0.85rem", marginTop: "2px" }}>{check.message}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

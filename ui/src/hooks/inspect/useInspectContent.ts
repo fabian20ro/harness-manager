@@ -142,6 +142,35 @@ export function useInspectContent({
     }
   }
 
+  async function fixInspectCheck(checkLabel: string) {
+    if (!selectedProject || !selectedNode) return;
+    try {
+      const response = await fetch(
+        apiUrl(apiBase, `/api/projects/${selectedProject}/inspect/fix`),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tool: selectedTool,
+            node: selectedNode,
+            check_label: checkLabel,
+          }),
+        },
+      );
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        throw new Error(payload.error ?? `Fix failed: ${response.status}`);
+      }
+      const payload = (await response.json()) as SaveInspectResponse;
+      setGraph(payload.graph);
+      setInspect(payload.inspect);
+      setStatusMessage(payload.status_message);
+    } catch (error) {
+      setStatusMessage(String(error));
+      throw error;
+    }
+  }
+
   async function refreshActivity() {
     if (!selectedProject) return;
     setStatusMessage("Refreshing observed activity.");
@@ -175,6 +204,7 @@ export function useInspectContent({
     reloadInspectNode,
     saveInspectContent,
     revertInspectSave,
+    fixInspectCheck,
     refreshActivity,
   };
 }

@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { type InspectTreeNode } from "../lib/inspect";
+import { type HealthStatus } from "../lib/types";
 
 type InspectTreeProps = {
   expandedKeys: string[];
@@ -145,6 +146,20 @@ const TreeNodeRow = memo(function TreeNodeRow({
       <span className={`tree-node-indicator usage-${node.usageState}`} style={{ fontSize: '0.6rem' }} aria-hidden="true">
         {node.usageState === "used" ? "●" : node.usageState === "broken" ? "!" : node.usageState === "proposed" ? "◩" : "○"}
       </span>
+      {node.health?.overall_status && node.health.overall_status !== "healthy" && (
+        <span 
+          title={`Health: ${node.health.overall_status}`}
+          style={{ 
+            color: node.health.overall_status === "critical" ? "#ff4444" : "#ffbb00", 
+            fontSize: '1rem', 
+            marginLeft: '-4px',
+            marginRight: '4px',
+            lineHeight: 1 
+          }}
+        >
+          •
+        </span>
+      )}
       <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {node.path.includes('/agents/') && node.path.endsWith('.md') ? "🤖 " : node.path.includes('/skills/') && node.path.endsWith('.md') ? "⚡ " : ""}
         {node.label}

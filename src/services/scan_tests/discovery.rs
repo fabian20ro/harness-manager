@@ -12,6 +12,7 @@ mod tests {
     use crate::services::scan::{
         scan_projects, scan_projects_with_progress,
     };
+    use crate::services::jobs::JobRegistry;
 
     #[test]
     fn scan_finds_repo_and_codex_artifacts() {
@@ -33,7 +34,8 @@ mod tests {
             max_snapshot_bytes: 5_000_000,
         };
         let store = Store::new(config.store_root.clone());
-        let projects = scan_projects(&config, &store, None).expect("scan");
+        let jobs = JobRegistry::new(store.clone());
+        let projects = scan_projects(&config, &store, &jobs, None).expect("scan");
         assert_eq!(projects.len(), 1);
         assert_eq!(projects[0].kind, ProjectKind::GitRepo);
         let state = store
@@ -72,9 +74,10 @@ mod tests {
             max_snapshot_bytes: 5_000_000,
         };
         let store = Store::new(config.store_root.clone());
+        let jobs = JobRegistry::new(store.clone());
         let mut progress = Vec::new();
 
-        let projects = scan_projects_with_progress(&config, &store, None, |update| {
+        let projects = scan_projects_with_progress(&config, &store, &jobs, None, |update| {
             progress.push(update);
             Ok(())
         })
@@ -107,8 +110,8 @@ mod tests {
             max_snapshot_bytes: 5_000_000,
         };
         let store = Store::new(config.store_root.clone());
-
-        let projects = scan_projects(&config, &store, None).expect("scan");
+        let jobs = JobRegistry::new(store.clone());
+        let projects = scan_projects(&config, &store, &jobs, None).expect("scan");
         assert_eq!(projects.len(), 1);
         assert_eq!(projects[0].kind, ProjectKind::WorkspaceCandidate);
         assert_eq!(projects[0].root_path, workspace.to_string_lossy());
@@ -138,8 +141,8 @@ mod tests {
             max_snapshot_bytes: 5_000_000,
         };
         let store = Store::new(config.store_root.clone());
-
-        let projects = scan_projects(&config, &store, None).expect("scan");
+        let jobs = JobRegistry::new(store.clone());
+        let projects = scan_projects(&config, &store, &jobs, None).expect("scan");
         assert!(projects.is_empty());
     }
 
@@ -166,8 +169,8 @@ mod tests {
             max_snapshot_bytes: 5_000_000,
         };
         let store = Store::new(config.store_root.clone());
-
-        let projects = scan_projects(&config, &store, None).expect("scan");
+        let jobs = JobRegistry::new(store.clone());
+        let projects = scan_projects(&config, &store, &jobs, None).expect("scan");
         let reviewer = projects.iter().find(|p| p.name == "reviewer").expect("reviewer project found");
         assert_eq!(reviewer.kind, ProjectKind::PluginPackage);
         assert!(reviewer.discovery_reason.contains("SKILL.md"));

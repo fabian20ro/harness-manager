@@ -168,6 +168,15 @@ pub struct PluginSystemCatalog {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ValidationRule {
+    #[serde(rename = "type")]
+    pub rule_type: String,
+    pub target: String,
+    pub severity: String,
+    pub description: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ToolCatalog {
     pub surface: String,
     pub family: String,
@@ -183,9 +192,34 @@ pub struct ToolCatalog {
     #[serde(default)]
     pub project_discovery_rules: Vec<ProjectDiscoveryRule>,
     #[serde(default)]
+    pub validation_rules: Vec<ValidationRule>,
+    #[serde(default)]
     pub observed_probes: Vec<String>,
     #[serde(default)]
     pub plugin_system: Option<PluginSystemCatalog>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HealthStatus {
+    Healthy,
+    Warning,
+    Critical,
+    Unknown,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CheckResult {
+    pub label: String,
+    pub status: HealthStatus,
+    pub message: String,
+    pub fix_available: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HealthReport {
+    pub overall_status: HealthStatus,
+    pub checks: Vec<CheckResult>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -206,6 +240,7 @@ pub struct ArtifactNode {
     pub byte_size: u64,
     pub reason: String,
     pub metadata: Option<JsonValue>,
+    pub health: Option<HealthReport>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -237,6 +272,7 @@ pub struct PluginArtifactNode {
     pub states: Vec<NodeState>,
     pub confidence: f32,
     pub reason: String,
+    pub health: Option<HealthReport>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

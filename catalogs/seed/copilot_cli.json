@@ -57,6 +57,20 @@
       "states": ["declared", "effective"]
     }
   ],
+  "validation_rules": [
+    {
+      "type": "env_var_presence",
+      "target": "GITHUB_TOKEN",
+      "severity": "critical",
+      "description": "GitHub Token required for Copilot CLI auth."
+    },
+    {
+      "type": "file_schema",
+      "target": "copilot-instructions.md",
+      "severity": "warning",
+      "description": "Copilot instructions should follow the standard mandate schema."
+    }
+  ],
   "project_discovery_rules": [
     {
       "glob": ".github/copilot-instructions.md",

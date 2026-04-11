@@ -13,6 +13,7 @@ mod tests {
     use crate::services::scan::{
         reindex_project_tool_with_progress, scan_projects, collect_repo_files,
     };
+    use crate::services::jobs::JobRegistry;
     use crate::services::graph::{
         build_surface_state_with_context, ScanRunContext,
     };
@@ -37,7 +38,8 @@ mod tests {
             max_snapshot_bytes: 5_000_000,
         };
         let store = Store::new(config.store_root.clone());
-        let projects = scan_projects(&config, &store, None).expect("scan");
+        let jobs = JobRegistry::new(store.clone());
+        let projects = scan_projects(&config, &store, &jobs, None).expect("scan");
         let project = projects.first().expect("project");
 
         let before_index = store
@@ -55,6 +57,7 @@ mod tests {
         let state = reindex_project_tool_with_progress(
             &config,
             &store,
+            &jobs,
             &project.id,
             "codex",
             |update| {
@@ -62,7 +65,7 @@ mod tests {
                 Ok(())
             },
         )
-        .expect("scoped reindex");
+        .expect("reindex");
 
         assert_eq!(state.tool.id, "codex");
         assert!(progress.iter().any(|update| update.phase == "repo"));

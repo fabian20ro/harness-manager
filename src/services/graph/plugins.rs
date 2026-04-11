@@ -144,6 +144,7 @@ pub fn collect_plugins(
                     "Plugin manifest detected via {}.",
                     candidate.discovery_sources.join(", ")
                 ),
+                health: None,
             }));
             edges.push(GraphEdge {
                 from: plugin_id.clone(),
@@ -191,6 +192,7 @@ pub fn collect_plugins(
                 states: vec![NodeState::Declared],
                 confidence: 0.7,
                 reason: "Plugin documentation detected.".to_string(),
+                health: None,
             }));
             edges.push(GraphEdge {
                 from: plugin_id.clone(),
@@ -234,6 +236,7 @@ pub fn discover_codex_skill_artifacts(
                 states: missing_skill_states(plugin_disabled),
                 confidence: 0.92,
                 reason: format!("Plugin declares missing skill path: {}.", raw_skill_path),
+                health: None,
             });
             continue;
         }
@@ -329,6 +332,7 @@ fn build_skill_artifact(
         states: existing_skill_states(plugin_disabled),
         confidence: if plugin_disabled { 0.82 } else { 0.96 },
         reason: "Plugin bundles skill artifact.".to_string(),
+        health: None,
     }
 }
 

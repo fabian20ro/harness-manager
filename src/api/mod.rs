@@ -14,6 +14,7 @@ use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
 use crate::{
     config::AppConfig,
     services::jobs::JobRegistry,
+    services::scan::reindex_project_tool_with_progress,
     storage::Store,
 };
 
@@ -32,12 +33,63 @@ pub struct AppState {
 impl AppState {
     pub fn new(config: AppConfig, store: Store) -> Self {
         let jobs = JobRegistry::new(store.clone());
-        Self {
+        let state = Self {
             config: Arc::new(config),
             store,
             jobs,
+        };
+        
+        // Start the background file watcher
+        let watcher_state = state.clone();
+        if let Err(e) = state.jobs.setup_watcher(move |path| {
+            let s = watcher_state.clone();
+            tokio::spawn(async move {
+                if let Err(err) = handle_file_event(&s, path).await {
+                    tracing::error!("Failed to handle file event: {}", err);
+                }
+            });
+        }) {
+            tracing::error!("Failed to setup file watcher: {}", e);
+        }
+
+        state
+    }
+}
+
+async fn handle_file_event(state: &AppState, path: std::path::PathBuf) -> anyhow::Result<()> {
+    // Basic debounce/filter: only reindex if it's a file we care about
+    let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    if filename.starts_with('.') || filename == "target" || filename == "node_modules" {
+        return Ok(());
+    }
+
+    // Find which project this path belongs to
+    let projects = state.store.maybe_read_json::<Vec<crate::domain::ProjectSummary>>(
+        &state.store.projects_index_path()
+    )?.unwrap_or_default();
+
+    for project in projects {
+        if path.starts_with(&project.root_path) {
+            tracing::info!("File change detected in project {}: {:?}", project.name, path);
+            
+            // Reindex the project for the current tool context
+            // In a real multi-tool scenario, we'd iterate over all tools, 
+            // but here we can start by re-indexing the main one or providing a global "Watch" job.
+            let catalogs = crate::services::scan::load_catalogs(&state.store)?;
+            for tool in catalogs.keys() {
+                let _ = reindex_project_tool_with_progress(
+                    &state.config,
+                    &state.store,
+                    &state.jobs,
+                    &project.id,
+                    tool,
+                    |_| Ok(()),
+                );
+            }
         }
     }
+
+    Ok(())
 }
 
 pub fn router(state: AppState) -> Router {
@@ -64,6 +116,7 @@ pub fn router(state: AppState) -> Router {
             "/api/projects/:id/inspect/revert-last-save",
             post(inspect::post_inspect_revert_last_save),
         )
+        .route("/api/projects/:id/inspect/fix", post(inspect::post_inspect_fix))
         .route("/api/docs/fetch", post(meta::post_docs_fetch))
         .route("/api/activity/refresh", post(meta::post_activity_refresh))
         .route("/api/catalogs/refresh", post(meta::post_catalog_refresh))

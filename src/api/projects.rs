@@ -113,9 +113,13 @@ pub fn spawn_scan_job(
         let store_for_work = store.clone();
         let result = tokio::task::spawn_blocking(move || {
             let mut emitter = ScanProgressEmitter::new(jobs_for_work.clone(), job.clone());
-            scan_projects_with_progress(&config_for_work, &store_for_work, roots, |progress| {
-                emitter.emit(progress)
-            })
+            scan_projects_with_progress(
+                &config_for_work,
+                &store_for_work,
+                &jobs_for_work,
+                roots,
+                |progress| emitter.emit(progress),
+            )
         })
         .await;
 
@@ -158,6 +162,7 @@ pub fn spawn_project_reindex_job(
             reindex_project_tool_with_progress(
                 &config_for_work,
                 &store_for_work,
+                &jobs_for_work,
                 &project_id_for_work,
                 &tool_for_work,
                 |progress| emitter.emit(progress),

@@ -75,6 +75,7 @@ export function useInspectController() {
     reloadInspectNode,
     saveInspectContent,
     revertInspectSave,
+    fixInspectCheck,
     refreshActivity,
   } = useInspectContent({
     apiBase,
@@ -102,6 +103,7 @@ export function useInspectController() {
     isScopedReindexRunning,
     projects,
     reloadInspectNode,
+    fixInspectCheck,
     refreshActivity,
     revertInspectSave,
     runGlobalScan,

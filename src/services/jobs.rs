@@ -1,20 +1,71 @@
 use std::{
     collections::HashMap,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::Utc;
-use tokio::sync::broadcast;
+use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
+use tokio::sync::{broadcast, mpsc};
 use uuid::Uuid;
 
 use crate::{domain::JobStatus, storage::Store};
+
+pub struct FileWatcher {
+    watcher: RecommendedWatcher,
+    #[allow(dead_code)]
+    tx: mpsc::UnboundedSender<PathBuf>,
+}
+
+impl FileWatcher {
+    pub fn new<F>(on_event: F) -> Result<Self>
+    where
+        F: Fn(PathBuf) + Send + 'static,
+    {
+        let (tx, mut rx) = mpsc::unbounded_channel::<PathBuf>();
+        let event_tx = tx.clone();
+
+        let watcher = RecommendedWatcher::new(
+            move |res: notify::Result<notify::Event>| {
+                if let Ok(event) = res {
+                    for path in event.paths {
+                        let _ = event_tx.send(path);
+                    }
+                }
+            },
+            Config::default().with_poll_interval(Duration::from_millis(500)),
+        )?;
+
+        tokio::spawn(async move {
+            while let Some(path) = rx.recv().await {
+                on_event(path);
+            }
+        });
+
+        Ok(Self { watcher, tx })
+    }
+
+    pub fn watch(&mut self, path: &Path) -> Result<()> {
+        self.watcher
+            .watch(path, RecursiveMode::Recursive)
+            .context("failed to start watching path")
+    }
+
+    pub fn unwatch(&mut self, path: &Path) -> Result<()> {
+        self.watcher
+            .unwatch(path)
+            .context("failed to stop watching path")
+    }
+}
 
 #[derive(Clone)]
 pub struct JobRegistry {
     jobs: Arc<Mutex<HashMap<String, JobStatus>>>,
     sender: broadcast::Sender<JobStatus>,
     store: Store,
+    watcher: Arc<Mutex<Option<FileWatcher>>>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -37,7 +88,35 @@ impl JobRegistry {
             jobs: Arc::new(Mutex::new(HashMap::new())),
             sender,
             store,
+            watcher: Arc::new(Mutex::new(None)),
         }
+    }
+
+    pub fn setup_watcher<F>(&self, on_event: F) -> Result<()>
+    where
+        F: Fn(PathBuf) + Send + 'static,
+    {
+        let mut watcher_lock = self.watcher.lock().expect("watcher lock poisoned");
+        if watcher_lock.is_none() {
+            *watcher_lock = Some(FileWatcher::new(on_event)?);
+        }
+        Ok(())
+    }
+
+    pub fn watch_path(&self, path: &Path) -> Result<()> {
+        let mut watcher_lock = self.watcher.lock().expect("watcher lock poisoned");
+        if let Some(watcher) = watcher_lock.as_mut() {
+            watcher.watch(path)?;
+        }
+        Ok(())
+    }
+
+    pub fn unwatch_path(&self, path: &Path) -> Result<()> {
+        let mut watcher_lock = self.watcher.lock().expect("watcher lock poisoned");
+        if let Some(watcher) = watcher_lock.as_mut() {
+            watcher.unwatch(path)?;
+        }
+        Ok(())
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<JobStatus> {

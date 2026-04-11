@@ -8,6 +8,8 @@ use crate::{
     api::{ApiError, ApiResult, AppState},
     domain::{InspectPayload, SaveInspectResponse},
     services::edit::{inspect_payload, revert_last_save, save_edit},
+    services::validation::apply_fix,
+    services::scan::reindex_project_tool_with_progress,
 };
 
 #[derive(Debug, Deserialize)]
@@ -75,6 +77,49 @@ pub async fn post_inspect_revert_last_save(
         )
         .map_err(ApiError::from_edit_error)?,
     ))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct InspectFixBody {
+    pub tool: String,
+    pub node: String,
+    pub check_label: String,
+}
+
+pub async fn post_inspect_fix(
+    State(state): State<AppState>,
+    Path(project_id): Path<String>,
+    Json(body): Json<InspectFixBody>,
+) -> ApiResult<Json<SaveInspectResponse>> {
+    let payload = inspect_payload(&state.store, &project_id, &body.tool, &body.node)
+        .map_err(ApiError::from_inspect_error)?;
+    
+    let artifact = match payload.entity {
+        crate::domain::GraphNode::Artifact(ref a) => a,
+        _ => return Err(ApiError::bad_request("Only artifacts can be fixed.")),
+    };
+
+    apply_fix(artifact, &body.check_label)?;
+
+    // Reindex to update graph state
+    let graph = reindex_project_tool_with_progress(
+        &state.config,
+        &state.store,
+        &state.jobs,
+        &project_id,
+        &body.tool,
+        |_| Ok(()),
+    )?;
+
+    // Refresh payload
+    let updated_payload = inspect_payload(&state.store, &project_id, &body.tool, &body.node)
+        .map_err(ApiError::from_inspect_error)?;
+
+    Ok(Json(SaveInspectResponse {
+        inspect: updated_payload,
+        graph,
+        status_message: format!("Fixed: {}", body.check_label),
+    }))
 }
 
 #[cfg(test)]

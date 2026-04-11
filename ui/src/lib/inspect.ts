@@ -1,4 +1,4 @@
-import type { GraphNodeRecord, SurfaceState } from "./types";
+import type { GraphNodeRecord, SurfaceState, HealthReport } from "./types";
 
 export const HELPER_COMMAND = "cargo run";
 
@@ -49,6 +49,7 @@ export type InspectTreeNode = {
   usageState: "used" | "unused" | "broken" | "proposed";
   score: number;
   isDirectory: boolean;
+  health?: HealthReport;
 };
 
 type TrieNode = {
@@ -58,6 +59,7 @@ type TrieNode = {
   path: string;
   nodeId?: string;
   states: string[];
+  health?: HealthReport;
   children: Map<string, TrieNode>;
 };
 
@@ -112,6 +114,7 @@ export function buildInspectTree(graph: SurfaceState | null): InspectTreeNode[] 
       path: graph.project.display_path,
       label: undefined,
       states: ["effective"],
+      health: undefined,
     },
     ...graph.nodes
       .filter((node) => node.kind !== "project")
@@ -120,6 +123,7 @@ export function buildInspectTree(graph: SurfaceState | null): InspectTreeNode[] 
         path: getNodeDisplayPath(node),
         label: typeof node.name === "string" ? node.name : undefined,
         states: verdictsMap.get(node.id) ?? [],
+        health: node.health,
       }))
       .filter((entry) => isPathBearing(entry.path)),
   ];
@@ -137,6 +141,7 @@ export function buildInspectTree(graph: SurfaceState | null): InspectTreeNode[] 
     current.nodeId = entry.nodeId;
     current.displayLabel = entry.label;
     current.states = entry.states;
+    current.health = entry.health;
   }
 
   return [...rootMap.values()]
@@ -227,6 +232,7 @@ function finalizeTree(node: TrieNode): InspectTreeNode {
             : "unused",
     score: Math.min(scoreStates(node.states), ...children.map((child) => child.score)),
     isDirectory: children.length > 0,
+    health: node.health,
   };
 }
 

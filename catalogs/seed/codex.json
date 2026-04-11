@@ -66,6 +66,20 @@
       "states": ["declared"]
     }
   ],
+  "validation_rules": [
+    {
+      "type": "env_var_presence",
+      "target": "OPENAI_API_KEY",
+      "severity": "critical",
+      "description": "OpenAI API Key required for Codex."
+    },
+    {
+      "type": "file_schema",
+      "target": "AGENTS.md",
+      "severity": "warning",
+      "description": "AGENTS.md should follow the standard mandate schema."
+    }
+  ],
   "project_discovery_rules": [
     {
       "glob": "AGENTS.md",

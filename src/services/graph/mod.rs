@@ -18,6 +18,7 @@ use crate::{
     storage::Store,
     services::plugins::discovery::{PluginDiscoveryCache},
     services::projects::discovery::display_path,
+    services::validation::validate_artifact,
 };
 
 use super::scan::ScanProgress;
@@ -83,6 +84,9 @@ pub fn build_surface_state_with_context(
     for artifact in
         collect_artifacts_from_rules(&repo_root, inventory, catalog, &config.home_dir, indexed_at)?
     {
+        let mut artifact = artifact;
+        artifact.health = validate_artifact(&artifact, &catalog.validation_rules);
+
         basename_to_node.insert(
             Path::new(&artifact.path)
                 .file_name()
@@ -113,6 +117,8 @@ pub fn build_surface_state_with_context(
             .unwrap_or(&artifact.path)
             .to_string();
         let mut artifact = artifact;
+        artifact.health = validate_artifact(&artifact, &catalog.validation_rules);
+
         if let Some(repo_artifact_id) = basename_to_node.get(&basename) {
             if !artifact.states.contains(&NodeState::Shadowed) {
                 artifact.states.push(NodeState::Shadowed);
@@ -287,6 +293,7 @@ fn collect_artifacts_from_rules(
                     byte_size: metadata.as_ref().map(|m| m.len()).unwrap_or(0),
                     reason: reason.clone(),
                     metadata: None,
+                    health: None,
                 });
             }
         }
@@ -322,6 +329,7 @@ fn collect_global_locations(
             byte_size: metadata.as_ref().map(|m| m.len()).unwrap_or(0),
             reason: location.reason.clone(),
             metadata: None,
+            health: None,
         });
     }
     Ok(nodes)
