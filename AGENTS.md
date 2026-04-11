@@ -1,12 +1,41 @@
+# AGENTS.md
+
 work style: telegraph; noun-phrases ok; drop grammar; min tokens.
 
-Always plan and execute with extensibility, maintainability, performance, verifiability in mind.
+> bootstrap context only
+- discoverable from codebase → don't put here.
+> corrections + patterns → LESSONS_LEARNED.md.
+> development:
+- correctness first
+- smallest good change
+- preserve behavior / interfaces / invariants unless task says otherwise
+- simple, explicit code
+- KISS
+- YAGNI
+- DRY; rule of three; temp duplication ok during migration
+- high cohesion; low coupling
+- follow repo patterns unless intentionally replacing with better consistent one
+- refactor when patch would raise future complexity
+- for broad changes: optimize for coherent end-state; stage changes; each step verifiable
+- no unrelated churn
+- leave code better
+> validation:
+- fastest relevant proof
+- targeted tests first
+- typecheck / build / lint as needed
+- smoke tests for affected flows when useful
+- update tests when behavior intentionally changes
+> ambiguity:
+- cannot decide from code -> explain; ask; no assume
+- otherwise choose most reversible reasonable path; state assumption
+
+---
 
 Read `LESSONS_LEARNED.md` at task start.
 Append `ITERATION_LOG.md` at iteration end.
 Promote repeat patterns to `LESSONS_LEARNED.md`; keep one-off observations in `ITERATION_LOG.md`.
-Prefer codebase as source of truth; no discoverable info duplicated into agent docs.
-Use sub-agents on demand:
+
+## Sub-Agents
 
 | Agent | Path | Use when |
 |---|---|---|

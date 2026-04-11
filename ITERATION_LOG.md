@@ -7,6 +7,20 @@
 
 ---
 
+### [2026-04-11] AI Agent Config & Memory System Standardization
+
+**Context:** Project configuration and memory system needed alignment with `SETUP_AI_AGENT_CONFIG.md` guidelines.
+**Happened:**
+- **Redirects:** Updated `CLAUDE.md` and `GEMINI.md` to `Read AGENTS.md asap`.
+- **Standardization:** Updated `AGENTS.md` with the mandatory preamble (development/validation principles) and structured sub-agent table.
+- **Audit:** Audited `LESSONS_LEARNED.md` and `ITERATION_LOG.md` for structure and relevance; confirmed compliance.
+- **Verification:** Confirmed `.claude/agents/` sub-agents match the latest templates.
+**Outcome:** Success. The project's memory hierarchy (AGENTS, LESSONS_LEARNED, ITERATION_LOG, sub-agents) is now standardized and lean.
+**Insight:** A clear preamble in `AGENTS.md` provides essential non-discoverable constraints that prevent redundant work and ensure consistency across sessions.
+**Promoted:** no
+
+---
+
 ### [2026-04-06] PR #4 Conflict Resolution and PR Verification
 
 **Context:** PR #4 had merge conflicts and auto-merge errors in the UI components and tests.
