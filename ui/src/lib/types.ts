@@ -22,7 +22,7 @@ export type CheckResult = {
   label: string;
   status: HealthStatus;
   message: string;
-  fix_available: bool;
+  fix_available: boolean;
 };
 
 export type HealthReport = {
