@@ -39,6 +39,8 @@ export function useInspectContent({
 
     setInspectStatusMessage("");
 
+    const displayPath = String(selectedGraphNode.display_path ?? selectedGraphNode.path ?? selectedNode);
+
     fetch(
       apiUrl(
         apiBase,
@@ -50,7 +52,7 @@ export function useInspectContent({
           const payload = (await response.json().catch(() => null)) as { error?: string } | null;
           throw new Error(
             formatInspectFailureMessage(
-              String(selectedGraphNode.display_path ?? selectedGraphNode.path ?? selectedNode),
+              displayPath,
               response.status,
               payload,
             ),
