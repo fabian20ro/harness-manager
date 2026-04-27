@@ -15,10 +15,9 @@ use crate::{
     },
 };
 
-pub async fn index() -> Html<&'static str> {
-    if let Ok(content) = std::fs::read_to_string("ui/dist/index.html") {
-        let leaked = Box::leak(content.into_boxed_str());
-        return Html(leaked);
+pub async fn index() -> Html<String> {
+    if let Ok(content) = tokio::fs::read_to_string("ui/dist/index.html").await {
+        return Html(content);
     }
 
     Html(
@@ -40,7 +39,7 @@ pub async fn index() -> Html<&'static str> {
       <p>React UI source in <code>ui/</code>. Run <code>npm install && npm run dev</code> there for the browser app.</p>
     </div>
   </body>
-</html>"#,
+</html>"#.to_string(),
     )
 }
 
@@ -140,4 +139,33 @@ pub async fn post_catalog_refresh(
         Err(error) => state.jobs.finish(job, "failed", &error.to_string())?,
     };
     Ok(Json(job))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[tokio::test]
+    async fn test_index_fallback() {
+        // Ensure the file does NOT exist
+        let _ = fs::remove_file("ui/dist/index.html");
+
+        let res = index().await;
+        assert!(res.0.contains("Harness Inspector"));
+        assert!(res.0.contains("Rust helper live"));
+    }
+
+    #[tokio::test]
+    async fn test_index_file() {
+        // Create the file
+        fs::create_dir_all("ui/dist").unwrap();
+        fs::write("ui/dist/index.html", "<html><body>Custom Index</body></html>").unwrap();
+
+        let res = index().await;
+        assert_eq!(res.0, "<html><body>Custom Index</body></html>");
+
+        // Cleanup (optional, but good for isolation)
+        let _ = fs::remove_file("ui/dist/index.html");
+    }
 }
