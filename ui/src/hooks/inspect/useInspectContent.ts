@@ -40,6 +40,9 @@ export function useInspectContent({
 
     setInspectStatusMessage("");
 
+    // Capture properties to avoid narrowing issues in the async closure
+    const nodeDisplayPath = String(selectedGraphNode.display_path ?? selectedGraphNode.path ?? selectedNode);
+
     async function fetchContent() {
       try {
         const response = await fetch(
@@ -52,7 +55,7 @@ export function useInspectContent({
           const payload = (await response.json().catch(() => null)) as { error?: string } | null;
           throw new Error(
             formatInspectFailureMessage(
-              String(selectedGraphNode.display_path ?? selectedGraphNode.path ?? selectedNode),
+              nodeDisplayPath,
               response.status,
               payload,
             ),

@@ -145,9 +145,14 @@ pub async fn post_catalog_refresh(
 mod tests {
     use super::*;
     use std::fs;
+    use std::sync::Mutex;
+
+    // Use a static mutex to prevent tests that touch the filesystem from running in parallel.
+    static FS_MUTEX: Mutex<()> = Mutex::new(());
 
     #[tokio::test]
     async fn test_index_fallback() {
+        let _lock = FS_MUTEX.lock().unwrap();
         // Ensure the file does NOT exist
         let _ = fs::remove_file("ui/dist/index.html");
 
@@ -158,6 +163,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_index_file() {
+        let _lock = FS_MUTEX.lock().unwrap();
         // Create the file
         fs::create_dir_all("ui/dist").unwrap();
         fs::write("ui/dist/index.html", "<html><body>Custom Index</body></html>").unwrap();
@@ -165,7 +171,7 @@ mod tests {
         let res = index().await;
         assert_eq!(res.0, "<html><body>Custom Index</body></html>");
 
-        // Cleanup (optional, but good for isolation)
+        // Cleanup
         let _ = fs::remove_file("ui/dist/index.html");
     }
 }
