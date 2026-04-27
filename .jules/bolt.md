@@ -6,3 +6,7 @@
 ## 2026-04-08 - Memoize Artifact Filtering in CapabilitiesDashboard
 **Learning:** Filtering large arrays in a component render function can lead to performance degradation if the component re-renders frequently without the underlying data changing.
 **Action:** Wrap filtering logic in `useMemo` with the appropriate dependency array to ensure the filter only runs when the source data changes.
+
+## 2026-04-10 - Async File I/O and Memory Leaks in Handlers
+**Learning:** Using synchronous file I/O (`std::fs::read_to_string`) in an async context blocks the executor thread, degrading performance. Additionally, using `Box::leak` to satisfy `'static` lifetimes for dynamic data (like file contents) creates a memory leak on every request.
+**Action:** Replaced `std::fs` with `tokio::fs` and changed the return type from `Html<&'static str>` to `Html<String>` to allow proper memory management and non-blocking I/O.
