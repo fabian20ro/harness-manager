@@ -279,6 +279,33 @@ mod tests {
     }
 
     #[test]
+    fn markdown_links_ignore_fragments_when_resolving_paths() {
+        let temp = TempDir::new().expect("tempdir");
+        let base = temp.path().join("README.md");
+        fs::create_dir_all(temp.path().join("docs")).expect("docs dir");
+        fs::write(temp.path().join("docs").join("guide.md"), "ok").expect("guide");
+
+        let refs = extract_references(
+            &ResolverContext {
+                base_file: &base,
+                resolve_from_dir: temp.path(),
+                base_display_path: "README.md",
+                artifact_type: &ArtifactType::LocalDoc,
+                tool_family: "misc",
+                home_dir: Path::new("/Users/test"),
+            },
+            "[Guide](docs/guide.md#intro)\n",
+        );
+
+        let hit = refs
+            .iter()
+            .find(|hit| hit.source == "markdown_reference")
+            .expect("markdown ref");
+        assert!(hit.resolved_path.ends_with("docs/guide.md"));
+        assert!(!hit.broken);
+    }
+
+    #[test]
     fn plugin_manifest_refs_resolve_from_plugin_root_for_codex_layouts() {
         let temp = TempDir::new().expect("tempdir");
         let plugin_root = temp.path().join("vercel");
