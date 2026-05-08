@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { InspectPayload, SaveInspectResponse, SurfaceState } from "../../lib/types";
-import { apiUrl, formatInspectFailureMessage } from "./util";
+import { apiUrl, formatInspectFailureMessage, parseApiError } from "./util";
 
 interface UseInspectContentProps {
   apiBase: string;
@@ -25,6 +25,7 @@ export function useInspectContent({
   const [inspectStatusMessage, setInspectStatusMessage] = useState("");
 
   useEffect(() => {
+    let ignore = false;
     if (!selectedProject || !selectedNode || !graph) {
       setInspect(null);
       setInspectStatusMessage("");
@@ -39,35 +40,44 @@ export function useInspectContent({
 
     setInspectStatusMessage("");
 
-    const displayPath = String(selectedGraphNode.display_path ?? selectedGraphNode.path ?? selectedNode);
+    // Capture properties to avoid narrowing issues in the async closure
+    const nodeDisplayPath = String(selectedGraphNode.display_path ?? selectedGraphNode.path ?? selectedNode);
 
-    fetch(
-      apiUrl(
-        apiBase,
-        `/api/projects/${selectedProject}/inspect?tool=${selectedTool}&node=${encodeURIComponent(selectedNode)}`,
-      ),
-    )
-      .then(async (response) => {
+    async function fetchContent() {
+      try {
+        const response = await fetch(
+          apiUrl(
+            apiBase,
+            `/api/projects/${selectedProject}/inspect?tool=${selectedTool}&node=${encodeURIComponent(selectedNode)}`,
+          ),
+        );
         if (!response.ok) {
           const payload = (await response.json().catch(() => null)) as { error?: string } | null;
           throw new Error(
             formatInspectFailureMessage(
-              displayPath,
+              nodeDisplayPath,
               response.status,
               payload,
             ),
           );
         }
-        return (await response.json()) as InspectPayload;
-      })
-      .then((payload) => {
-        setInspect(payload);
-        setInspectStatusMessage("");
-      })
-      .catch((error) => {
-        setInspect(null);
-        setInspectStatusMessage(String(error));
-      });
+        const payload = (await response.json()) as InspectPayload;
+        if (!ignore) {
+          setInspect(payload);
+          setInspectStatusMessage("");
+        }
+      } catch (error) {
+        if (!ignore) {
+          setInspect(null);
+          setInspectStatusMessage(String(error));
+        }
+      }
+    }
+
+    fetchContent();
+    return () => {
+      ignore = true;
+    };
   }, [apiBase, graph, selectedProject, selectedNode, selectedTool]);
 
   async function reloadInspectNode() {
@@ -80,7 +90,7 @@ export function useInspectContent({
         ),
       );
       if (!response.ok) {
-        throw new Error(`Reload failed: ${response.status}`);
+        throw new Error(await parseApiError(response, `Reload failed: ${response.status}`));
       }
       setInspect((await response.json()) as InspectPayload);
       setStatusMessage("Reloaded from disk.");
@@ -103,8 +113,7 @@ export function useInspectContent({
         }),
       });
       if (!response.ok) {
-        const payload = (await response.json()) as { error?: string };
-        throw new Error(payload.error ?? `Save failed: ${response.status}`);
+        throw new Error(await parseApiError(response, `Save failed: ${response.status}`));
       }
       const payload = (await response.json()) as SaveInspectResponse;
       setGraph(payload.graph);
@@ -131,8 +140,7 @@ export function useInspectContent({
         },
       );
       if (!response.ok) {
-        const payload = (await response.json()) as { error?: string };
-        throw new Error(payload.error ?? `Revert failed: ${response.status}`);
+        throw new Error(await parseApiError(response, `Revert failed: ${response.status}`));
       }
       const payload = (await response.json()) as SaveInspectResponse;
       setGraph(payload.graph);
@@ -160,8 +168,7 @@ export function useInspectContent({
         },
       );
       if (!response.ok) {
-        const payload = (await response.json()) as { error?: string };
-        throw new Error(payload.error ?? `Fix failed: ${response.status}`);
+        throw new Error(await parseApiError(response, `Fix failed: ${response.status}`));
       }
       const payload = (await response.json()) as SaveInspectResponse;
       setGraph(payload.graph);
