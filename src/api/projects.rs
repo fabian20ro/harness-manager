@@ -34,6 +34,7 @@ async fn get_projects_internal(
     Ok(Json(projects))
 }
 
+/// Returns a list of all discovered projects from the local store index.
 pub async fn get_projects(
     State(state): State<AppState>,
 ) -> ApiResult<Json<Vec<crate::domain::ProjectSummary>>> {
