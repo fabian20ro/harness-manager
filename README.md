@@ -4,7 +4,7 @@ Harness Inspector = local-first inspector for AI coding harnesses.
 
 Current shape:
 - Rust helper on `127.0.0.1:8765`
-- React/Vite UI in [`/Users/fabian/git/harness-manager/ui`](./ui)
+- React/Vite UI in [`./ui`](./ui)
 - JSON store under `~/.harness-inspector`
 - graph-backed inspection model; UI = tree/graph projection over same data
 
