@@ -120,3 +120,9 @@
 - fixed: TS2304: Cannot find name 'bool' in ui/src/lib/types.ts.
 - action: replaced 'bool' with 'boolean' in 'CheckResult' type.
 - verification: 'npm run build' in 'ui/' directory passed.
+
+## [2026-05-11] README tab list sync
+- changed: added the missing `Capabilities` tab to the README main-tabs list.
+- reason: README now matches the current UI shell and avoids stale discoverability docs.
+- verification: direct file review only; no code path changed.
+

@@ -21,6 +21,7 @@ Main tabs:
 - `Docs`: fetch remote docs, save normalized local snapshots, attach to selected project/tool
 - `Tool`: choose surface context
 - `Inspect`: effective context tree, viewer, reasons, refs
+- `Capabilities`: grouped surface overview for skills, hooks, MCP servers, and instructions
 - `Activity`: manual `observed` refresh from local process evidence
 
 Supported tool contexts:
