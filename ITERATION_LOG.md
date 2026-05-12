@@ -126,3 +126,11 @@
 - reason: README now matches the current UI shell and avoids stale discoverability docs.
 - verification: direct file review only; no code path changed.
 
+## [2026-05-12] Explicit button types for shared UI controls
+- changed: added `type="button"` to shared nav / toolbar / helper buttons and tightened component tests to assert it.
+- reason: plain buttons default to submit behavior inside forms; making intent explicit avoids accidental form submission if these controls are reused in a form shell later.
+- verification: `npm test -- --run src/components/HelperCommand.test.tsx src/components/SidebarNav.test.tsx src/components/InspectToolbar.test.tsx`; `npm run build`.
+- outcome: success. UI behavior preserved; reusable controls are safer by default.
+- insight: shared buttons should declare their type even when the current layout is not form-based.
+- promoted: no
+

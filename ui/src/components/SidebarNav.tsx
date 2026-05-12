@@ -43,6 +43,7 @@ export function SidebarNav({
         {MENU_ITEMS.map((item) => (
           <button
             key={item.id}
+            type="button"
             className={item.id === activeTab ? "tab active" : "tab"}
             onClick={() => onSelectTab(item.id)}
             title={collapsed ? item.label : undefined}
@@ -56,6 +57,7 @@ export function SidebarNav({
 
       <div className="nav-footer">
         <button
+          type="button"
           className="scan"
           onClick={onReindex}
           title={globalReindexLabel}
@@ -65,6 +67,7 @@ export function SidebarNav({
           {!collapsed ? <span>{globalReindexLabel}</span> : null}
         </button>
         <button
+          type="button"
           className="collapse-toggle"
           onClick={onToggleCollapse}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
