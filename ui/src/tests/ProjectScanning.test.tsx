@@ -345,7 +345,7 @@ describe("Project Scanning", () => {
           ok: false,
           status: 409,
           json: async () => ({
-            error: "Another scan or reindex job is already running.",
+            error: "Another scan or reindex job is already running. Wait for it to finish, then try again.",
           }),
         } as Response;
       }
@@ -375,7 +375,9 @@ describe("Project Scanning", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText("Error: Another scan or reindex job is already running."),
+        screen.getByText(
+          "Error: Another scan or reindex job is already running. Wait for it to finish, then try again.",
+        ),
       ).toBeInTheDocument(),
     );
     expect(screen.getByRole("button", { name: "Reindex" })).toBeEnabled();

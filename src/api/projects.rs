@@ -95,7 +95,9 @@ pub async fn post_project_reindex(
 
 pub fn ensure_no_running_scan_job(jobs: &JobRegistry) -> ApiResult<()> {
     if jobs.find_running_kind("scan").is_some() {
-        return Err(ApiError::conflict("Another scan or reindex job is already running."));
+        return Err(ApiError::conflict(
+            "Another scan or reindex job is already running. Wait for it to finish, then try again.",
+        ));
     }
     Ok(())
 }
@@ -395,6 +397,9 @@ mod tests {
             .await
             .expect_err("scan should conflict");
         assert_eq!(error.status, StatusCode::CONFLICT);
-        assert_eq!(error.message, "Another scan or reindex job is already running.");
+        assert_eq!(
+            error.message,
+            "Another scan or reindex job is already running. Wait for it to finish, then try again.",
+        );
     }
 }
