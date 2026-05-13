@@ -151,3 +151,12 @@
 |- outcome: success. Empty state is now more actionable, and the component is covered by a focused regression test.
 |- insight: empty states work better when they say both what to do next and what will appear after selection.
 |- promoted: no
+---
+
+## [2026-05-13] Capabilities dashboard now handles an empty discovered set
+- changed: added an explicit empty state in `ui/src/components/CapabilitiesDashboard.tsx` for projects/tool contexts with no discovered capability nodes, and added a regression test in `ui/src/components/CapabilitiesDashboard.test.tsx`.
+- reason: without this guard the dashboard rendered an empty grid shell, which looked broken instead of intentionally empty.
+- verification: `npm exec vitest -- run src/components/CapabilitiesDashboard.test.tsx`; `npm run build` in `ui/`.
+- outcome: success. The panel now tells users when there is nothing to show yet, and the UI build stays green.
+- insight: blank capability dashboards need a dedicated no-data state, not just per-section null returns.
+- promoted: no
