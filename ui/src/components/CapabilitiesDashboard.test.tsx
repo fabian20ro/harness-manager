@@ -32,6 +32,7 @@ describe("CapabilitiesDashboard", () => {
         "Select a project and tool context to see skills, hooks, MCP servers, and instructions.",
       ),
     ).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
   });
 
   it("shows an empty discovered-capabilities state when the graph has no capability nodes", () => {
@@ -42,5 +43,6 @@ describe("CapabilitiesDashboard", () => {
         "No skills, hooks, MCP servers, or instructions were discovered for this project and tool context yet.",
       ),
     ).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveAttribute("aria-atomic", "true");
   });
 });

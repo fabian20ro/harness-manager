@@ -9,7 +9,13 @@ interface CapabilitiesDashboardProps {
 export function CapabilitiesDashboard({ graph }: CapabilitiesDashboardProps) {
   if (!graph) {
     return (
-      <div className="panel" style={{ textAlign: 'center', padding: '40px' }}>
+      <div
+        className="panel"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        style={{ textAlign: 'center', padding: '40px' }}
+      >
         <p style={{ color: 'var(--muted)' }}>
           Select a project and tool context to see skills, hooks, MCP servers, and instructions.
         </p>
@@ -28,7 +34,13 @@ export function CapabilitiesDashboard({ graph }: CapabilitiesDashboardProps) {
 
   if (capabilityCount === 0) {
     return (
-      <div className="panel" style={{ textAlign: 'center', padding: '40px' }}>
+      <div
+        className="panel"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        style={{ textAlign: 'center', padding: '40px' }}
+      >
         <p style={{ color: 'var(--muted)' }}>
           No skills, hooks, MCP servers, or instructions were discovered for this project and tool context yet.
         </p>

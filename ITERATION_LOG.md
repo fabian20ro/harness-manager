@@ -160,3 +160,9 @@
 - outcome: success. The panel now tells users when there is nothing to show yet, and the UI build stays green.
 - insight: blank capability dashboards need a dedicated no-data state, not just per-section null returns.
 - promoted: no
+
+
+## [2026-05-13] Capabilities dashboard accessibility polish
+- Added `role="status"`, `aria-live="polite"`, and `aria-atomic="true"` to the two Capabilities dashboard empty states so the panel can announce selection/no-results changes.
+- Added focused tests that assert the live-region contract on both empty states.
+- Verified with `npm test -- --run src/components/CapabilitiesDashboard.test.tsx` in `ui/`.
