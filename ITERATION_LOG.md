@@ -143,3 +143,11 @@
 |- insight: short retry guidance belongs in user-facing conflict text when the action is safe to repeat.
 |- promoted: no
 |-
+
+## [2026-05-13] Capabilities empty state now tells users what to select
+|- changed: updated the Capabilities dashboard empty state copy in `ui/src/components/CapabilitiesDashboard.tsx` and added `ui/src/components/CapabilitiesDashboard.test.tsx`.
+|- reason: the previous empty state was correct but vague; the new copy names the selection needed and previews the kinds of capabilities the panel shows.
+|- verification: `npm test -- src/components/CapabilitiesDashboard.test.tsx`; `npm run build` in `ui/`.
+|- outcome: success. Empty state is now more actionable, and the component is covered by a focused regression test.
+|- insight: empty states work better when they say both what to do next and what will appear after selection.
+|- promoted: no

@@ -10,7 +10,9 @@ export function CapabilitiesDashboard({ graph }: CapabilitiesDashboardProps) {
   if (!graph) {
     return (
       <div className="panel" style={{ textAlign: 'center', padding: '40px' }}>
-        <p style={{ color: 'var(--muted)' }}>No project or tool context selected.</p>
+        <p style={{ color: 'var(--muted)' }}>
+          Select a project and tool context to see skills, hooks, MCP servers, and instructions.
+        </p>
       </div>
     );
   }
