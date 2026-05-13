@@ -163,6 +163,14 @@
 
 
 ## [2026-05-13] Capabilities dashboard accessibility polish
-- Added `role="status"`, `aria-live="polite"`, and `aria-atomic="true"` to the two Capabilities dashboard empty states so the panel can announce selection/no-results changes.
-- Added focused tests that assert the live-region contract on both empty states.
-- Verified with `npm test -- --run src/components/CapabilitiesDashboard.test.tsx` in `ui/`.
+|- Added `role="status"`, `aria-live="polite"`, and `aria-atomic="true"` to the two Capabilities dashboard empty states so the panel can announce selection/no-results changes.
+|- Added focused tests that assert the live-region contract on both empty states.
+|- Verified with `npm test -- --run src/components/CapabilitiesDashboard.test.tsx` in `ui/`.
+
+## [2026-05-13] Learning-loop reference names synced to current repo conventions
+|- changed: updated the reference-resolution regression fixtures in `src/services/refs/mod.rs` and `src/services/scan_tests/references.rs` to use `LESSONS_LEARNED.md` and `ITERATION_LOG.md` instead of legacy `ANALYSIS.md` / `TODOS.md` names.
+|- reason: the repo's active learning loop uses `LESSONS_LEARNED.md` and `ITERATION_LOG.md`; the tests should exercise the current instruction surface rather than stale filenames.
+|- verification: `PATH=/opt/rust/cargo/bin:$PATH CARGO_HOME=/tmp/harness-manager-cargo-home cargo test sentence_style_instruction_references_become_effective`; `PATH=/opt/rust/cargo/bin:$PATH CARGO_HOME=/tmp/harness-manager-cargo-home cargo test extracts_multiple_instruction_directives_from_sentence`.
+|- outcome: success. The reference tests now mirror the repo's current learning-loop convention.
+|- insight: when a repo's durable workflow names change, fixture text should track the live convention so parser tests stay representative.
+|- promoted: no

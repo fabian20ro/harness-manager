@@ -121,11 +121,11 @@ mod tests {
         fs::write(repo.join("AGENTS.md"), "Read CLAUDE.md\n").expect("agents");
         fs::write(
             repo.join("CLAUDE.md"),
-            "If prioritization is involved, read ANALYSIS.md and TODOS.md directly before planning.\n",
+            "If prioritization is involved, read LESSONS_LEARNED.md and ITERATION_LOG.md directly before planning.\n",
         )
         .expect("claude");
-        fs::write(repo.join("ANALYSIS.md"), "ok").expect("analysis");
-        fs::write(repo.join("TODOS.md"), "ok").expect("todos");
+        fs::write(repo.join("LESSONS_LEARNED.md"), "ok").expect("lessons");
+        fs::write(repo.join("ITERATION_LOG.md"), "ok").expect("iteration");
 
         let config = AppConfig {
             home_dir: home.clone(),
@@ -148,7 +148,7 @@ mod tests {
         )
         .expect("state");
 
-        for expected in ["ANALYSIS.md", "TODOS.md"] {
+        for expected in ["LESSONS_LEARNED.md", "ITERATION_LOG.md"] {
             let node = state
                 .nodes
                 .iter()

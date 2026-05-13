@@ -172,8 +172,8 @@ mod tests {
     fn extracts_multiple_instruction_directives_from_sentence() {
         let temp = TempDir::new().expect("tempdir");
         let base = temp.path().join("CLAUDE.md");
-        fs::write(temp.path().join("ANALYSIS.md"), "ok").expect("analysis");
-        fs::write(temp.path().join("TODOS.md"), "ok").expect("todos");
+        fs::write(temp.path().join("LESSONS_LEARNED.md"), "ok").expect("lessons");
+        fs::write(temp.path().join("ITERATION_LOG.md"), "ok").expect("iteration");
 
         let refs = extract_references(
             &ResolverContext {
@@ -184,15 +184,15 @@ mod tests {
                 tool_family: "claude",
                 home_dir: Path::new("/Users/test"),
             },
-            "If prioritization is involved, read `ANALYSIS.md` and `TODOS.md` directly before planning.\n",
+            "If prioritization is involved, read `LESSONS_LEARNED.md` and `ITERATION_LOG.md` directly before planning.\n",
         );
 
         assert!(refs
             .iter()
-            .any(|hit| hit.resolved_path.ends_with("ANALYSIS.md")));
+            .any(|hit| hit.resolved_path.ends_with("LESSONS_LEARNED.md")));
         assert!(refs
             .iter()
-            .any(|hit| hit.resolved_path.ends_with("TODOS.md")));
+            .any(|hit| hit.resolved_path.ends_with("ITERATION_LOG.md")));
     }
 
     #[test]
