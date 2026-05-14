@@ -184,10 +184,17 @@
 ||- promoted: no
 ||
 ## [2026-05-14] Viewer pane buttons now declare explicit button type
-||- changed: added `type="button"` to the ViewerPane edit, reload, revert, toggle, and health-fix controls; added a focused regression test for the read/edit controls.
-||- reason: these controls are click-only UI actions and explicit button types prevent accidental form-submit behavior if the component is embedded in a form later.
-||- verification: `npm test -- --run src/components/ViewerPane.test.tsx`; `npm run build` in `ui/`.
-||- outcome: success. The viewer controls keep the same UX while becoming safer by default.
-||- insight: even leaf UI controls benefit from explicit button types when the component may be reused in a form shell.
-||- promoted: no
-||
+|- changed: added `type="button"` to the ViewerPane edit, reload, revert, toggle, and health-fix controls; added a focused regression test for the read/edit controls.
+|- reason: these controls are click-only UI actions and explicit button types prevent accidental form-submit behavior if the component is embedded in a form later.
+|- verification: `npm test -- --run src/components/ViewerPane.test.tsx`; `npm run build` in `ui/`.
+|- outcome: success. The viewer controls keep the same UX while becoming safer by default.
+|- insight: even leaf UI controls benefit from explicit button types when the component may be reused in a form shell.
+|- promoted: no
+
+## [2026-05-14] Context-cost boundary coverage for scan status
+|- changed: added a focused Vitest regression in `ui/src/lib/inspect.test.ts` covering `calculateContextCost()` at the exact 200 KB boundary and one byte above it.
+|- reason: `ScanStatusBar` warns on `> 200 * 1024`; the boundary behavior was not pinned by tests.
+|- verification: `npm exec vitest -- run ui/src/lib/inspect.test.ts`; `npm run build` in `ui/`.
+|- outcome: success. The context-size heuristic is now regression-tested at the cutoff users actually see.
+|- insight: boundary-only warnings should have an exact-limit test, not just a generic large-input case.
+|- promoted: no

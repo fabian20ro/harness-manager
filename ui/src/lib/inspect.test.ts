@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildInspectTree,
+  calculateContextCost,
   collectAllDirectoryKeys,
   collectSelectedAncestorKeys,
   formatDisplayPath,
@@ -111,5 +112,29 @@ describe("inspect helpers", () => {
     expect(usageStateForStates(["proposed"])).toBe("proposed");
     expect(usageStateForStates(["referenced_only"])).toBe("unused");
     expect(usageStateForStates(["broken_reference"])).toBe("broken");
+  });
+
+  it("warns only after the effective context cost crosses 200 KB", () => {
+    const exactLimitGraph: SurfaceState = {
+      ...graph,
+      nodes: graph.nodes.map((node, index) =>
+        index === 1 || index === 3
+          ? { ...node, byte_size: 100 * 1024 }
+          : node,
+      ),
+    };
+    const overLimitGraph: SurfaceState = {
+      ...graph,
+      nodes: graph.nodes.map((node, index) =>
+        index === 1
+          ? { ...node, byte_size: 100 * 1024 + 1 }
+          : index === 3
+            ? { ...node, byte_size: 100 * 1024 }
+            : node,
+      ),
+    };
+
+    expect(calculateContextCost(exactLimitGraph)).toEqual({ bytes: 200 * 1024, warning: false });
+    expect(calculateContextCost(overLimitGraph)).toEqual({ bytes: 200 * 1024 + 1, warning: true });
   });
 });
