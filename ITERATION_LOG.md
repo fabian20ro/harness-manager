@@ -174,3 +174,12 @@
 |- outcome: success. The reference tests now mirror the repo's current learning-loop convention.
 |- insight: when a repo's durable workflow names change, fixture text should track the live convention so parser tests stay representative.
 |- promoted: no
+|
+## [2026-05-14] README supported tool contexts synced to current tool list
+|- changed: added the missing Gemini CLI and Pi Coding Agent entries to the README supported tool contexts list.
+|- reason: `ui/src/lib/inspect.ts` already exposes those tool IDs and labels, so the README was under-reporting supported contexts.
+|- verification: direct file review against `ui/src/lib/inspect.ts`; docs-only change, no runtime tests run.
+|- outcome: success. README now matches the current tool coverage surfaced by the UI.
+|- insight: when a public docs list is derived from a central tool enum, sync both sides together instead of leaving the README as a stale subset.
+|- promoted: no
+|

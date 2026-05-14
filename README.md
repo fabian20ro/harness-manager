@@ -31,6 +31,8 @@ Supported tool contexts:
 - Codex CLI
 - Copilot CLI
 - IntelliJ/Copilot
+- Gemini CLI
+- Pi Coding Agent
 - OpenCode
 - Antigravity
 
