@@ -17,6 +17,7 @@
 
 ## Code Patterns & Pitfalls
 **[2026-04-06]** JSX duplicate attributes - auto-merges of JSX can silently introduce duplicate attributes (e.g., `role`, `aria-label`) that break TypeScript builds and accessibility-aware tests. Audit JSX changes after merge resolution.
+**[2026-05-14]** explicit button types on shared action buttons - reusable or shell-level `<button>` elements should declare `type="button"` even when they are not currently inside a form. Prevents future form-shell regressions and keeps click-only controls predictable.
 
 ## Testing & Quality
 <!-- **[YYYY-MM-DD]** title - explanation -->

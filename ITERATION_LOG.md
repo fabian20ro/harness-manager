@@ -191,6 +191,14 @@
 |- insight: even leaf UI controls benefit from explicit button types when the component may be reused in a form shell.
 |- promoted: no
 
+## [2026-05-14] App shell buttons now declare explicit button type
+|- changed: added `type="button"` to the Projects, Docs, Inspect, and Activity shell buttons in `ui/src/App.tsx`; added a regression test in `ui/src/tests/AppNavigation.test.tsx` that checks the button type across those visible tabs.
+|- reason: shell-level click actions should be explicit about not submitting forms, matching the repo's prior button-type hardening pattern.
+|- verification: `npm test -- --run src/tests/AppNavigation.test.tsx`; `npm run build` in `ui/`.
+|- outcome: success. The app shell actions are safer by default, and the regression test pins the contract.
+|- insight: even when a component is outside a form today, explicit `type="button"` keeps click-only controls safe if the component is later embedded inside a form shell.
+|- promoted: yes
+
 ## [2026-05-14] Context-cost boundary coverage for scan status
 |- changed: added a focused Vitest regression in `ui/src/lib/inspect.test.ts` covering `calculateContextCost()` at the exact 200 KB boundary and one byte above it.
 |- reason: `ScanStatusBar` warns on `> 200 * 1024`; the boundary behavior was not pinned by tests.

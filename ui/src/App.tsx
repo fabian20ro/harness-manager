@@ -72,6 +72,7 @@ export function App() {
                 {controller.projects.map((project) => (
                   <button
                     key={project.id}
+                    type="button"
                     className={
                       project.id === controller.selectedProject ? "project-card active" : "project-card"
                     }
@@ -97,7 +98,8 @@ export function App() {
                   onChange={(event) => controller.setDocUrl(event.target.value)}
                   placeholder="https://docs.example.com"
                 />
-                <button 
+                <button
+                  type="button"
                   className="toolbar-reindex"
                   onClick={() => void controller.fetchDocs()}
                 >
@@ -127,6 +129,7 @@ export function App() {
                   <h2>Context Tree</h2>
                   <div className="inspect-panel-actions">
                     <button
+                      type="button"
                       className="panel-action-button"
                       onClick={() => controller.expandAllTree()}
                       disabled={!hasExpandableTree || treeFullyExpanded}
@@ -134,6 +137,7 @@ export function App() {
                       Expand
                     </button>
                     <button
+                      type="button"
                       className="panel-action-button"
                       onClick={() => controller.collapseAllTree()}
                       disabled={!hasExpandableTree || treeFullyCollapsed}
@@ -199,7 +203,8 @@ export function App() {
             <section className="panel">
               <div className="activity-header">
                 <h2>Recent Activity</h2>
-                <button 
+                <button
+                  type="button"
                   className="panel-action-button"
                   onClick={() => void controller.refreshActivity()}
                 >
