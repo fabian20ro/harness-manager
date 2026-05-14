@@ -176,10 +176,18 @@
 |- promoted: no
 |
 ## [2026-05-14] README supported tool contexts synced to current tool list
-|- changed: added the missing Gemini CLI and Pi Coding Agent entries to the README supported tool contexts list.
-|- reason: `ui/src/lib/inspect.ts` already exposes those tool IDs and labels, so the README was under-reporting supported contexts.
-|- verification: direct file review against `ui/src/lib/inspect.ts`; docs-only change, no runtime tests run.
-|- outcome: success. README now matches the current tool coverage surfaced by the UI.
-|- insight: when a public docs list is derived from a central tool enum, sync both sides together instead of leaving the README as a stale subset.
-|- promoted: no
-|
+||- changed: added the missing Gemini CLI and Pi Coding Agent entries to the README supported tool contexts list.
+||- reason: `ui/src/lib/inspect.ts` already exposes those tool IDs and labels, so the README was under-reporting supported contexts.
+||- verification: direct file review against `ui/src/lib/inspect.ts`; docs-only change, no runtime tests run.
+||- outcome: success. README now matches the current tool coverage surfaced by the UI.
+||- insight: when a public docs list is derived from a central tool enum, sync both sides together instead of leaving the README as a stale subset.
+||- promoted: no
+||
+## [2026-05-14] Viewer pane buttons now declare explicit button type
+||- changed: added `type="button"` to the ViewerPane edit, reload, revert, toggle, and health-fix controls; added a focused regression test for the read/edit controls.
+||- reason: these controls are click-only UI actions and explicit button types prevent accidental form-submit behavior if the component is embedded in a form later.
+||- verification: `npm test -- --run src/components/ViewerPane.test.tsx`; `npm run build` in `ui/`.
+||- outcome: success. The viewer controls keep the same UX while becoming safer by default.
+||- insight: even leaf UI controls benefit from explicit button types when the component may be reused in a form shell.
+||- promoted: no
+||
