@@ -63,6 +63,10 @@ describe("inspect helpers", () => {
     expect(formatDisplayPath("~/git/harness-manager")).toBe("~/git/harness-manager");
   });
 
+  it("preserves URL-like paths", () => {
+    expect(formatDisplayPath("https://docs.example.com/a//b")).toBe("https://docs.example.com/a//b");
+  });
+
   it("builds an explicit tree rooted at ~", () => {
     const tree = buildInspectTree(graph);
     expect(tree[0]?.label).toBe("~");

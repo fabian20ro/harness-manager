@@ -206,3 +206,11 @@
 |- outcome: success. The context-size heuristic is now regression-tested at the cutoff users actually see.
 |- insight: boundary-only warnings should have an exact-limit test, not just a generic large-input case.
 |- promoted: no
+
+## [2026-05-14] URL-like paths now survive display normalization
+|- changed: updated `formatDisplayPath()` in `ui/src/lib/inspect.ts` to preserve URL-like strings while still normalizing redundant slashes in filesystem paths; added a regression test in `ui/src/lib/inspect.test.ts`.
+|- reason: path display should not mangle `https://`-style strings if they surface through graph data or future UI reuse.
+|- verification: `npm exec vitest -- run src/lib/inspect.test.ts`; `npm run build` in `ui/`.
+|- outcome: success. Normal filesystem paths still normalize, and URL-like paths now render unchanged.
+|- insight: generic path-format helpers should treat URI schemes as a separate contract from local-path cleanup.
+|- promoted: no

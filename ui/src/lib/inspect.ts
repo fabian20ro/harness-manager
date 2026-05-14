@@ -67,6 +67,7 @@ export function formatDisplayPath(path?: string) {
   if (!path) return "";
   if (path === "~" || path === "/") return path;
   if (path.startsWith("~/")) return path;
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(path)) return path;
   return path.replace(/\/{2,}/g, "/");
 }
 
