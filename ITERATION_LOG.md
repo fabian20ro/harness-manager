@@ -208,9 +208,18 @@
 |- promoted: no
 
 ## [2026-05-14] URL-like paths now survive display normalization
-|- changed: updated `formatDisplayPath()` in `ui/src/lib/inspect.ts` to preserve URL-like strings while still normalizing redundant slashes in filesystem paths; added a regression test in `ui/src/lib/inspect.test.ts`.
-|- reason: path display should not mangle `https://`-style strings if they surface through graph data or future UI reuse.
-|- verification: `npm exec vitest -- run src/lib/inspect.test.ts`; `npm run build` in `ui/`.
-|- outcome: success. Normal filesystem paths still normalize, and URL-like paths now render unchanged.
-|- insight: generic path-format helpers should treat URI schemes as a separate contract from local-path cleanup.
-|- promoted: no
+||- changed: updated `formatDisplayPath()` in `ui/src/lib/inspect.ts` to preserve URL-like strings while still normalizing redundant slashes in filesystem paths; added a regression test in `ui/src/lib/inspect.test.ts`.
+||- reason: path display should not mangle `https://`-style strings if they surface through graph data or future UI reuse.
+||- verification: `npm exec vitest -- run src/lib/inspect.test.ts`; `npm run build` in `ui/`.
+||- outcome: success. Normal filesystem paths still normalize, and URL-like paths now render unchanged.
+||- insight: generic path-format helpers should treat URI schemes as a separate contract from local-path cleanup.
+||- promoted: no
+|
+## [2026-05-15] README current API list synced to backend routes
+- changed: added the missing `POST /api/projects/:id/reindex` and inspect persistence/fix routes to the README current API list.
+- reason: the backend router already exposes these endpoints, so the docs were under-reporting the live helper surface.
+- verification: direct route-table review against `src/api/mod.rs`; docs-only change, no runtime tests run.
+- outcome: success. README now reflects the current helper API endpoints more completely.
+- insight: when a public API list is derived from the router, keep the docs synced with newly exposed routes to avoid stale discoverability.
+- promoted: no
+|
