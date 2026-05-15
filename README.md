@@ -89,6 +89,7 @@ Relevant Codex docs:
 ## Helper API + storage
 
 Current API:
+- `GET /` — serves the app shell
 - `GET /api/projects`
 - `POST /api/scan`
 - `POST /api/projects/:id/reindex`

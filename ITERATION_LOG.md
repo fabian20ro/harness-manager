@@ -222,4 +222,13 @@
 - outcome: success. README now reflects the current helper API endpoints more completely.
 - insight: when a public API list is derived from the router, keep the docs synced with newly exposed routes to avoid stale discoverability.
 - promoted: no
-|
+
+---
+
+## [2026-05-15] README app shell route made discoverable
+- changed: documented `GET /` in the README API list as the app shell entry point.
+- reason: the router already serves the UI shell at `/`, but the README only listed helper endpoints.
+- verification: direct route-table review against `src/api/mod.rs`; docs-only change, no runtime tests run.
+- outcome: success. The visible landing route is now discoverable alongside the helper API.
+- insight: when the local helper also serves the UI shell, the root route belongs in the API surface docs.
+- promoted: no
