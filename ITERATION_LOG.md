@@ -232,3 +232,11 @@
 - outcome: success. The visible landing route is now discoverable alongside the helper API.
 - insight: when the local helper also serves the UI shell, the root route belongs in the API surface docs.
 - promoted: no
+
+## [2026-05-15] README scan-status warning made discoverable
+- changed: documented the Gemini truncation warning in the README current-shape summary.
+- reason: the UI already surfaces effective context size and warns near the ~200 KB limit, but the README did not mention that user-visible contract.
+- verification: direct file review against `ui/src/components/ScanStatusBar.tsx` and `ui/src/lib/inspect.ts`; docs-only change, no runtime tests run.
+- outcome: success. The README now mentions the scan-status warning users can see in the helper UI.
+- insight: when a status bar encodes a threshold warning, the same threshold belongs in the top-level product summary.
+- promoted: no
