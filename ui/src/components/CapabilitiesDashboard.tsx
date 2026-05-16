@@ -9,8 +9,16 @@ interface CapabilitiesDashboardProps {
 export function CapabilitiesDashboard({ graph }: CapabilitiesDashboardProps) {
   if (!graph) {
     return (
-      <div className="panel" style={{ textAlign: 'center', padding: '40px' }}>
-        <p style={{ color: 'var(--muted)' }}>No project or tool context selected.</p>
+      <div
+        className="panel"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        style={{ textAlign: 'center', padding: '40px' }}
+      >
+        <p style={{ color: 'var(--muted)' }}>
+          Select a project and tool context to see skills, hooks, MCP servers, and instructions.
+        </p>
       </div>
     );
   }
@@ -22,6 +30,23 @@ export function CapabilitiesDashboard({ graph }: CapabilitiesDashboardProps) {
   const hooks = useMemo(() => nodes.filter(n => n.artifact_type === 'hook' || n.artifact_type === 'script'), [nodes]);
   const mcpServers = useMemo(() => nodes.filter(n => n.artifact_type === 'mcp'), [nodes]);
   const instructions = useMemo(() => nodes.filter(n => n.artifact_type === 'instructions' || n.artifact_type === 'agent'), [nodes]);
+  const capabilityCount = skills.length + hooks.length + mcpServers.length + instructions.length;
+
+  if (capabilityCount === 0) {
+    return (
+      <div
+        className="panel"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        style={{ textAlign: 'center', padding: '40px' }}
+      >
+        <p style={{ color: 'var(--muted)' }}>
+          No skills, hooks, MCP servers, or instructions were discovered for this project and tool context yet.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'grid', gap: '24px' }}>

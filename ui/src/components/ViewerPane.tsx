@@ -85,17 +85,17 @@ export function ViewerPane({
     return (
       <div className="viewer-editor">
         <div className="viewer-toolbar">
-          <button onClick={() => setMode("read")}>Cancel</button>
-          <button onClick={() => setDraft(content ?? "")} disabled={!dirty || saving}>
+          <button type="button" onClick={() => setMode("read")}>Cancel</button>
+          <button type="button" onClick={() => setDraft(content ?? "")} disabled={!dirty || saving}>
             Discard draft
           </button>
-          <button onClick={() => void handleReload()} disabled={saving}>
+          <button type="button" onClick={() => void handleReload()} disabled={saving}>
             Reload
           </button>
-          <button onClick={() => void handleRevert()} disabled={!lastSavedBackupAvailable || saving}>
+          <button type="button" onClick={() => void handleRevert()} disabled={!lastSavedBackupAvailable || saving}>
             Revert last save
           </button>
-          <button onClick={() => void handleSave()} disabled={!dirty || !versionToken || saving}>
+          <button type="button" onClick={() => void handleSave()} disabled={!dirty || !versionToken || saving}>
             Save
           </button>
         </div>
@@ -115,9 +115,9 @@ export function ViewerPane({
       <div className="viewer-toolbar">
         {editable ? (
           <>
-            <button onClick={() => setMode("edit")}>Edit</button>
-            <button onClick={() => void handleReload()}>Reload</button>
-            <button onClick={() => void handleRevert()} disabled={!lastSavedBackupAvailable}>
+            <button type="button" onClick={() => setMode("edit")}>Edit</button>
+            <button type="button" onClick={() => void handleReload()}>Reload</button>
+            <button type="button" onClick={() => void handleRevert()} disabled={!lastSavedBackupAvailable}>
               Revert last save
             </button>
           </>
@@ -125,6 +125,7 @@ export function ViewerPane({
         {adjacentGitignore ? (
           <button 
             style={{ marginLeft: editable ? "auto" : 0 }} 
+            type="button"
             onClick={() => setShowGitignore(!showGitignore)}>
             {showGitignore ? "Show .geminiignore" : "Compare with .gitignore"}
           </button>
@@ -200,6 +201,7 @@ function HealthSection({ health, onFix }: { health: HealthReport, onFix?: (label
               <span style={{ fontSize: "0.8rem", opacity: 0.8 }}>({check.status})</span>
               {check.fix_available && onFix && (
                 <button 
+                  type="button"
                   style={{ marginLeft: "auto", fontSize: "0.8rem", padding: "2px 8px" }}
                   disabled={fixing === check.label}
                   onClick={() => void handleFix(check.label)}

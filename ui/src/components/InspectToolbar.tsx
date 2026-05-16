@@ -76,6 +76,7 @@ export function InspectToolbar({
         <HelperCommand onCopy={onCopyHelper} />
         <div className="toolbar-action">
           <button
+            type="button"
             className="toolbar-reindex"
             onClick={onScopedReindex}
             disabled={scopedReindexDisabled}

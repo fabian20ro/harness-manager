@@ -4,9 +4,10 @@ Harness Inspector = local-first inspector for AI coding harnesses.
 
 Current shape:
 - Rust helper on `127.0.0.1:8765`
-- React/Vite UI in [`/Users/fabian/git/harness-manager/ui`](./ui)
+- React/Vite UI in [`./ui`](./ui)
 - JSON store under `~/.harness-inspector`
 - graph-backed inspection model; UI = tree/graph projection over same data
+- scan status shows `Effective context size` and warns when effective context exceeds 200 KB, labeling it as approaching the Gemini truncation limit
 
 ## How it works now
 
@@ -21,6 +22,7 @@ Main tabs:
 - `Docs`: fetch remote docs, save normalized local snapshots, attach to selected project/tool
 - `Tool`: choose surface context
 - `Inspect`: effective context tree, viewer, reasons, refs
+- `Capabilities`: grouped surface overview for skills, hooks, MCP servers, and instructions
 - `Activity`: manual `observed` refresh from local process evidence
 
 Supported tool contexts:
@@ -30,6 +32,8 @@ Supported tool contexts:
 - Codex CLI
 - Copilot CLI
 - IntelliJ/Copilot
+- Gemini CLI
+- Pi Coding Agent
 - OpenCode
 - Antigravity
 
@@ -86,10 +90,15 @@ Relevant Codex docs:
 ## Helper API + storage
 
 Current API:
+- `GET /` — serves the app shell
 - `GET /api/projects`
 - `POST /api/scan`
+- `POST /api/projects/:id/reindex`
 - `GET /api/projects/:id/graph?tool=...`
 - `GET /api/projects/:id/inspect?tool=...&node=...`
+- `POST /api/projects/:id/inspect/save`
+- `POST /api/projects/:id/inspect/revert-last-save`
+- `POST /api/projects/:id/inspect/fix`
 - `POST /api/docs/fetch`
 - `POST /api/activity/refresh`
 - `POST /api/catalogs/refresh`

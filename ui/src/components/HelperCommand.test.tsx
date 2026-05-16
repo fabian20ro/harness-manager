@@ -9,7 +9,9 @@ describe("HelperCommand", () => {
     render(<HelperCommand onCopy={onCopy} />);
 
     expect(screen.getByText("cargo run")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    const copyButton = screen.getByRole("button", { name: "Copy" });
+    expect(copyButton).toHaveAttribute("type", "button");
+    fireEvent.click(copyButton);
     expect(onCopy).toHaveBeenCalledTimes(1);
   });
 });

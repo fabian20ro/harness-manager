@@ -57,9 +57,9 @@ impl AppState {
 }
 
 async fn handle_file_event(state: &AppState, path: std::path::PathBuf) -> anyhow::Result<()> {
-    // Basic debounce/filter: only reindex if it's a file we care about
-    let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    if filename.starts_with('.') || filename == "target" || filename == "node_modules" {
+    // Basic debounce/filter: only reindex if it's a file we care about and not in an ignored directory.
+    let components: Vec<_> = path.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect();
+    if components.iter().any(|c| c.starts_with('.') || c == "target" || c == "node_modules") {
         return Ok(());
     }
 

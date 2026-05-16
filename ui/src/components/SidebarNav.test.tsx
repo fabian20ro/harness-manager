@@ -26,7 +26,7 @@ describe("SidebarNav", () => {
     expect(screen.getByText("📁")).toBeInTheDocument();
     expect(screen.queryByText("cargo run")).not.toBeInTheDocument();
     expect(screen.getByText("Harness Inspector")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Reindex all/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Reindex all/ })).toHaveAttribute("type", "button");
   });
 
   it("calls collapse toggle", () => {

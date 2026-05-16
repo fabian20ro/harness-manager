@@ -24,7 +24,11 @@ describe("ViewerPane", () => {
       />,
     );
 
+    expect(screen.getByRole("button", { name: "Edit" })).toHaveAttribute("type", "button");
+
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute("type", "button");
+
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "beta" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(onSave).toHaveBeenCalledWith("beta", "v1");

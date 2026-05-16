@@ -10,7 +10,7 @@ export function HelperCommand({ command = HELPER_COMMAND, onCopy }: HelperComman
     <div className="helper-command" aria-label="Local helper command">
       <span className="helper-command-label">Local helper</span>
       <code>{command}</code>
-      <button onClick={onCopy}>Copy</button>
+      <button type="button" onClick={onCopy}>Copy</button>
     </div>
   );
 }

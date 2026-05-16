@@ -20,6 +20,13 @@ pub fn resolve_hit(
         return None;
     }
 
+    let raw = raw.split_once('#').map(|(before, _)| before).unwrap_or(raw);
+    let raw = raw.split_once('?').map(|(before, _)| before).unwrap_or(raw);
+
+    if raw.is_empty() {
+        return None;
+    }
+
     let resolved_path = if let Some(stripped) = raw.strip_prefix("~/") {
         context.home_dir.join(stripped)
     } else {
