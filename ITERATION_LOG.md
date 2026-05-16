@@ -240,3 +240,11 @@
 - outcome: success. The README now mentions the scan-status warning users can see in the helper UI.
 - insight: when a status bar encodes a threshold warning, the same threshold belongs in the top-level product summary.
 - promoted: no
+
+## [2026-05-16] README scan-status threshold precision synced to code
+- changed: tightened the README wording to say the warning triggers above 200 KB, matching `calculateContextCost()`.
+- reason: the UI copy says "approaching" the limit, but the actual heuristic is `bytes > 200 * 1024`; the docs should match the exact contract.
+- verification: direct file review against `ui/src/lib/inspect.ts` and `ui/src/components/ScanStatusBar.tsx`; docs-only change, no runtime tests run.
+- outcome: success. The README now matches the implementation threshold instead of implying a softer boundary.
+- insight: threshold-style warnings should document the exact trigger condition, not just the user-facing tone.
+- promoted: no
