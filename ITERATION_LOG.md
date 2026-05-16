@@ -248,3 +248,11 @@
 - outcome: success. The README now matches the implementation threshold instead of implying a softer boundary.
 - insight: threshold-style warnings should document the exact trigger condition, not just the user-facing tone.
 - promoted: no
+
+## [2026-05-16] README status-bar readout label synced to code
+- changed: updated the README scan-status bullet to mention the literal `Effective context size` readout in `ui/src/components/ScanStatusBar.tsx`.
+- reason: the status bar already shows the exact metric label, but the docs only described the warning tone and threshold.
+- verification: direct file review against `ui/src/components/ScanStatusBar.tsx`; docs-only change, no runtime tests run.
+- outcome: success. The README now covers both the readout label and the warning threshold users actually see.
+- insight: when a visible status bar combines a label with a threshold warning, document both together so the discoverability note matches the shipped UI.
+- promoted: no

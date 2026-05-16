@@ -7,7 +7,7 @@ Current shape:
 - React/Vite UI in [`./ui`](./ui)
 - JSON store under `~/.harness-inspector`
 - graph-backed inspection model; UI = tree/graph projection over same data
-- scan status warns when effective context exceeds 200 KB and labels it as approaching the Gemini truncation limit
+- scan status shows `Effective context size` and warns when effective context exceeds 200 KB, labeling it as approaching the Gemini truncation limit
 
 ## How it works now
 
