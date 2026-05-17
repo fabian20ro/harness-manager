@@ -256,3 +256,11 @@
 - outcome: success. The README now covers both the readout label and the warning threshold users actually see.
 - insight: when a visible status bar combines a label with a threshold warning, document both together so the discoverability note matches the shipped UI.
 - promoted: no
+
+## [2026-05-17] Index fallback tests isolated from repo UI build output
+- changed: moved `src/api/meta.rs` index tests into a temporary cwd helper so they no longer create or delete `ui/dist/index.html` in the working tree.
+- reason: tests should not mutate repo-local build output paths; isolated temp dirs make fallback/file-serving cases deterministic and avoid cleanup coupling.
+- verification: `PATH=/opt/rust/cargo/bin:$PATH CARGO_HOME=$(mktemp -d -t harness-cargo-XXXXXX) cargo test test_index --quiet`.
+- outcome: success. Both index tests pass against isolated filesystem state.
+- insight: tests for relative-path fallback behavior should change cwd into a temp dir rather than editing real repo-relative paths.
+- promoted: no

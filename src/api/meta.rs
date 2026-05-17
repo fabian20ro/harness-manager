@@ -147,14 +147,36 @@ mod tests {
     use std::fs;
     use std::sync::Mutex;
 
-    // Use a static mutex to prevent tests that touch the filesystem from running in parallel.
-    static FS_MUTEX: Mutex<()> = Mutex::new(());
+    // Use a static mutex to prevent tests that change the process cwd from running in parallel.
+    static CWD_MUTEX: Mutex<()> = Mutex::new(());
+
+    struct TestCwd {
+        original: std::path::PathBuf,
+        _tempdir: tempfile::TempDir,
+    }
+
+    impl TestCwd {
+        fn enter() -> Self {
+            let original = std::env::current_dir().unwrap();
+            let tempdir = tempfile::tempdir().unwrap();
+            std::env::set_current_dir(tempdir.path()).unwrap();
+            Self {
+                original,
+                _tempdir: tempdir,
+            }
+        }
+    }
+
+    impl Drop for TestCwd {
+        fn drop(&mut self) {
+            std::env::set_current_dir(&self.original).unwrap();
+        }
+    }
 
     #[tokio::test]
     async fn test_index_fallback() {
-        let _lock = FS_MUTEX.lock().unwrap();
-        // Ensure the file does NOT exist
-        let _ = fs::remove_file("ui/dist/index.html");
+        let _lock = CWD_MUTEX.lock().unwrap();
+        let _cwd = TestCwd::enter();
 
         let res = index().await;
         assert!(res.0.contains("Harness Inspector"));
@@ -163,15 +185,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_index_file() {
-        let _lock = FS_MUTEX.lock().unwrap();
-        // Create the file
+        let _lock = CWD_MUTEX.lock().unwrap();
+        let _cwd = TestCwd::enter();
         fs::create_dir_all("ui/dist").unwrap();
         fs::write("ui/dist/index.html", "<html><body>Custom Index</body></html>").unwrap();
 
         let res = index().await;
         assert_eq!(res.0, "<html><body>Custom Index</body></html>");
-
-        // Cleanup
-        let _ = fs::remove_file("ui/dist/index.html");
     }
 }
