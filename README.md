@@ -25,7 +25,7 @@ Main tabs:
 - `Capabilities`: grouped surface overview for skills, hooks, MCP servers, and instructions
 - `Activity`: manual `observed` refresh from local process evidence
 
-Supported tool contexts:
+Supported tool contexts (used as `tool` param in API):
 - Claude Code
 - Claude Cowork
 - Codex
