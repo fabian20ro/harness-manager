@@ -240,6 +240,19 @@ mod tests {
     use super::{JobRegistry, JobUpdate};
 
     #[test]
+    fn create_scoped_sets_project_and_tool() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let job = registry
+            .create_scoped("scan", "Scanning...", None, Some("global"), Some("claude-code"))
+            .expect("job");
+
+        assert_eq!(job.kind, "scan");
+        assert_eq!(job.project_id.as_deref(), Some("global"));
+        assert_eq!(job.tool.as_deref(), Some("claude-code"));
+    }
+
+    #[test]
     fn update_keeps_job_identity_and_running_state() {
         let temp = TempDir::new().expect("tempdir");
         let registry = JobRegistry::new(Store::new(temp.path().join("store")));
