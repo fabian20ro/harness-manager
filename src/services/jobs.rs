@@ -298,4 +298,18 @@ mod tests {
         assert_eq!(found.id, scan_job.id);
         assert!(registry.find_running_kind("refresh-activity").is_none());
     }
+
+    #[test]
+    fn finish_sets_finished_at() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let job = registry.create("scan", "Scanning...").expect("job");
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        let finished = registry.finish(job.clone(), "completed", "Finished.").expect("finished");
+
+        assert!(finished.finished_at.is_some());
+        assert!(finished.finished_at.unwrap() > job.created_at);
+    }
 }
