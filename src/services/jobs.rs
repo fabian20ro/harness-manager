@@ -196,6 +196,7 @@ impl JobRegistry {
         Ok(job)
     }
 
+    /// Finishes a job and updates its status with a timestamp.
     pub fn finish(&self, mut job: JobStatus, status: &str, message: &str) -> Result<JobStatus> {
         job.finished_at = Some(Utc::now());
         self.update(
