@@ -264,3 +264,11 @@
 - outcome: success. Both index tests pass against isolated filesystem state.
 - insight: tests for relative-path fallback behavior should change cwd into a temp dir rather than editing real repo-relative paths.
 - promoted: no
+
+## [2026-06-06] Stale tracked patch backups removed
+- changed: removed three tracked `.orig` snapshots beside the active InspectTree and GraphInspection sources.
+- reason: the snapshots differed from current sources, had no repository references, and were patch artifacts rather than maintained fixtures.
+- verification: repository reference search; `npm test -- --run` (12 files, 41 tests); `npm run build`.
+- outcome: success. Active sources remain intact; tests and production build pass without the backups.
+- insight: patch backup files should remain untracked; active source and version history already preserve recoverable states.
+- promoted: no
