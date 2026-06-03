@@ -240,6 +240,19 @@ mod tests {
     use super::{JobRegistry, JobUpdate};
 
     #[test]
+    fn create_scoped_sets_project_and_tool() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let job = registry
+            .create_scoped("scan", "Scanning...", None, Some("global"), Some("claude-code"))
+            .expect("job");
+
+        assert_eq!(job.kind, "scan");
+        assert_eq!(job.project_id.as_deref(), Some("global"));
+        assert_eq!(job.tool.as_deref(), Some("claude-code"));
+    }
+
+    #[test]
     fn update_keeps_job_identity_and_running_state() {
         let temp = TempDir::new().expect("tempdir");
         let registry = JobRegistry::new(Store::new(temp.path().join("store")));
@@ -284,5 +297,19 @@ mod tests {
         let found = registry.find_running_kind("scan").expect("running scan");
         assert_eq!(found.id, scan_job.id);
         assert!(registry.find_running_kind("refresh-activity").is_none());
+    }
+
+    #[test]
+    fn finish_sets_finished_at() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let job = registry.create("scan", "Scanning...").expect("job");
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        let finished = registry.finish(job.clone(), "completed", "Finished.").expect("finished");
+
+        assert!(finished.finished_at.is_some());
+        assert!(finished.finished_at.unwrap() > job.created_at);
     }
 }

@@ -6,3 +6,6 @@
 /ui/tsconfig.app.tsbuildinfo
 /ui/public/build-meta.json
 .playwright-mcp
+
+# Compound Autopilot infrastructure metadata
+.compound-autopilot/
