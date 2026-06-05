@@ -238,6 +238,23 @@ mod tests {
     use crate::storage::Store;
 
     use super::{JobRegistry, JobUpdate};
+    use chrono::Utc;
+
+    #[test]
+    fn create_sets_defaults_for_optional_fields() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let job = registry.create("scan", "Scanning...").expect("job");
+
+        assert_eq!(job.kind, "scan");
+        assert_eq!(job.status, "running");
+        assert_eq!(job.message, "Scanning...");
+        assert!(job.finished_at.is_none());
+        assert!(job.scope_kind.is_none());
+        assert!(job.project_id.is_none());
+        assert!(job.tool.is_none());
+        assert!(job.phase.is_none());
+    }
 
     #[test]
     fn create_scoped_sets_project_and_tool() {
@@ -300,10 +317,19 @@ mod tests {
     }
 
     #[test]
-    fn finish_sets_finished_at() {
+    fn create_sets_created_at() {
         let temp = TempDir::new().expect("tempdir");
         let registry = JobRegistry::new(Store::new(temp.path().join("store")));
         let job = registry.create("scan", "Scanning...").expect("job");
+
+        assert!(job.created_at <= Utc::now());
+    }
+
+    #[test]
+    fn finish_sets_finished_at() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let job = registry.create("rust", "Scanning...").expect("job");
 
         std::thread::sleep(std::time::Duration::from_millis(10));
 
