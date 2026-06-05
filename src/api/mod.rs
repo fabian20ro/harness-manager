@@ -60,6 +60,7 @@ async fn handle_file_event(state: &AppState, path: std::path::PathBuf) -> anyhow
     // Basic debounce/filter: only reindex if it's a file we care about and not in an ignored directory.
     let components: Vec<_> = path.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect();
     if components.iter().any(|c| c.starts_with('.') || c == "target" || c == "node_modules" || c == "dist" || c == ".next") {
+        tracing::debug!("Ignoring file event for filtered directory/file: {:?}", path);
         return Ok(());
     }
 
