@@ -90,20 +90,21 @@ Relevant Codex docs:
 ## Helper API + storage
 
 Current API:
-- `GET /` — serves the app shell
-- `GET /api/projects`
-- `POST /api/scan`
-- `POST /api/projects/:id/reindex`
-- `GET /api/projects/:id/graph?tool=...`
-- `GET /api/projects/:id/inspect?tool=...&node=...`
-- `POST /api/projects/:id/inspect/save`
-- `POST /api/projects/:id/inspect/revert-last-save`
-- `POST /api/projects/:id/inspect/fix`
-- `POST /api/docs/fetch`
-- `POST /api/activity/refresh`
-- `POST /api/catalogs/refresh`
-- `GET /api/jobs/:id`
-- `GET /api/events`
+    - `GET /` — serves the app shell
+    - `GET /api/projects`
+    - `POST /api/scan`
+    - `POST /api/projects/:id/reindex`
+    - `GET /api/projects/:id/graph?tool=...`
+    - `GET /api/projects/:id/inspect?tool=...&node=...`
+    - `POST /api/projects/:id/inspect/save`
+    - `POST /api/projects/:id/inspect/revert-last-save`
+    - `POST /api/projects/:id/inspect/fix`
+    - `POST /api/docs/fetch`
+    - `POST /api/activity/refresh`
+    - `POST /api/catalogs/refresh`
+    - `GET /api/jobs/:id`
+    - `GET /api/events`
+    // ... (existing lines)
 
 Persistent store layout:
 - `settings.json`
