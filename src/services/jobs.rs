@@ -238,6 +238,7 @@ mod tests {
     use crate::storage::Store;
 
     use super::{JobRegistry, JobUpdate};
+    use chrono::Utc;
 
     #[test]
     fn create_sets_defaults_for_optional_fields() {
@@ -316,10 +317,19 @@ mod tests {
     }
 
     #[test]
-    fn finish_sets_finished_at() {
+    fn create_sets_created_at() {
         let temp = TempDir::new().expect("tempdir");
         let registry = JobRegistry::new(Store::new(temp.path().join("store")));
         let job = registry.create("scan", "Scanning...").expect("job");
+
+        assert!(job.created_at <= Utc::now());
+    }
+
+    #[test]
+    fn finish_sets_finished_at() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let job = registry.create("rust", "Scanning...").expect("job");
 
         std::thread::sleep(std::time::Duration::from_millis(10));
 
