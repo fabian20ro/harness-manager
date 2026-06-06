@@ -340,3 +340,22 @@ mod tests {
         assert!(finished.finished_at.unwrap() > job.created_at);
     }
 }
+
+    #[test]
+    fn update_progress_updates_counts() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let mut job = registry.create("scan", "Scanning...").expect("job");
+
+        job.items_done = Some(1);
+        job.items_total = Some(10);
+        registry.update(job.clone(), JobUpdate {
+            items_done: Some(Some(5)),
+            items_total: Some(Some(10)),
+            ..JobUpdate::default()
+        }).expect("update");
+
+        let updated = registry.find_running_kind("scan").expect("job");
+        assert_eq!(updated.items_done, Some(5));
+        assert_eq!(updated.items_total, Some(10));
+    }
