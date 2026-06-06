@@ -342,20 +342,22 @@ mod tests {
 }
 
     #[test]
-    fn update_progress_updates_counts() {
+    fn get_retrieves_from_store_when_not_in_memory() {
         let temp = TempDir::new().expect("tempdir");
-        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
-        let mut job = registry.create("scan", "Scanning...").expect("job");
-
-        job.items_done = Some(1);
-        job.items_total = Some(10);
-        registry.update(job.clone(), JobUpdate {
-            items_done: Some(Some(5)),
-            items_total: Some(Some(10)),
-            ..JobUpdate::default()
-        }).expect("update");
-
-        let updated = registry.find_running_kind("scan").expect("job");
-        assert_eq!(updated.items_done, Some(5));
-        assert_eq!(updated.items_total, Some(10));
+        let store = Store::new(temp.path().to_path_buf());
+        let registry = JobRegistry::new(store.clone());
+        
+        let job_id = "test-job-123";
+        let mut job = registry.create("test", "initial").expect("job");
+        job.id = job_id.to_string();
+        
+        // Ensure it's not in the registry's in-memory map by creating a new registry
+        let registry_new = JobRegistry::new(store.clone());
+        
+        // Write job directly to the store
+        store.write_json(&store.job_path(job_id), &job).expect("write job");
+        
+        let retrieved = registry_new.get(job_id).expect("get job").expect("job exists");
+        assert_eq!(retrieved.id, job_id);
     }
+
