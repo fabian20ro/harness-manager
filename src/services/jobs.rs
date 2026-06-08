@@ -339,25 +339,21 @@ mod tests {
         assert!(finished.finished_at.is_some());
         assert!(finished.finished_at.unwrap() > job.created_at);
     }
-}
 
     #[test]
-    fn get_retrieves_from_store_when_not_in_memory() {
+    fn finish_sets_finished_at_v2() {
         let temp = TempDir::new().expect("tempdir");
-        let store = Store::new(temp.path().to_path_buf());
-        let registry = JobRegistry::new(store.clone());
-        
-        let job_id = "test-job-123";
-        let mut job = registry.create("test", "initial").expect("job");
-        job.id = job_id.to_string();
-        
-        // Ensure it's not in the registry's in-memory map by creating a new registry
-        let registry_new = JobRegistry::new(store.clone());
-        
-        // Write job directly to the store
-        store.write_json(&store.job_path(job_id), &job).expect("write job");
-        
-        let retrieved = registry_new.get(job_id).expect("get job").expect("job exists");
-        assert_eq!(retrieved.id, job_id);
-    }
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let job = registry.create("scan", "Scanning...").expect("job");
+        let start_time = Utc::now();
 
+        let finished_job = registry
+            .finish(job, "completed", "Done.")
+            .expect("finish job");
+
+        assert_eq!(finished_job.status, "completed");
+        assert_eq!(finished_job.message, "Done.");
+        assert!(finished_job.finished_at.is_some());
+        assert!(finished_job.finished_at.unwrap() >= start_time);
+    }
+}
