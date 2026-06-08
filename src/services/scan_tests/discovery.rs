@@ -147,32 +147,37 @@ mod tests {
     }
 
     #[test]
-    fn scan_discovers_copilot_skill_packages_from_global_github_root() {
+    fn scan_reports_correct_progress_indexing() {
         let temp = TempDir::new().expect("tempdir");
         let home = temp.path().join("home");
-        let skill_root = home.join(".github").join("skills").join("reviewer");
-        fs::create_dir_all(&skill_root).expect("skill dir");
-        fs::write(
-            skill_root.join("SKILL.md"),
-            "---\nname: Reviewer\ndescription: test\n---\n",
-        )
-        .expect("skill");
+        let repo = home.join("git").join("demo");
+        fs::create_dir_all(repo.join(".git")).expect("git dir");
+        fs::write(repo.join("AGENTS.md"), "ok").expect("agents");
 
         let config = AppConfig {
             home_dir: home.clone(),
             store_root: temp.path().join("store"),
             default_roots: vec![home.join("git")],
             scan_max_depth: 5,
-            known_global_dirs: vec![home.join(".github")],
+            known_global_dirs: vec![home.join(".codex")],
             allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
             allow_insecure_doc_hosts: false,
             max_snapshot_bytes: 5_000_000,
         };
         let store = Store::new(config.store_root.clone());
         let jobs = JobRegistry::new(store.clone());
-        let projects = scan_projects(&config, &store, &jobs, None).expect("scan");
-        let reviewer = projects.iter().find(|p| p.name == "reviewer").expect("reviewer project found");
-        assert_eq!(reviewer.kind, ProjectKind::PluginPackage);
-        assert!(reviewer.discovery_reason.contains("SKILL.md"));
+        let mut progress = Vec::new();
+
+        let projects = scan_projects_with_progress(&config, &store, &jobs, None, |update| {
+            progress.push(update);
+            Ok(())
+        })
+        .expect("scan");
+
+        assert_eq!(projects.len(), 1);
+        // Check that progress starts from 1 instead of 0
+        assert!(progress.iter().any(|update| {
+            update.phase == "repo" && update.items_done == Some(1)
+        }));
     }
 }
