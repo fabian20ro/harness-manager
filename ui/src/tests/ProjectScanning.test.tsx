@@ -287,7 +287,7 @@ describe("Project Scanning", () => {
     await waitFor(() =>
       expect(screen.getByRole("combobox", { name: "Project" })).toHaveValue("p1"),
     );
-    expect(graphCalls).toBe(1);
+    await waitFor(() => expect(graphCalls).toBe(1));
 
     await act(async () => {
       screen.getByRole("button", { name: "Reindex" }).click();
