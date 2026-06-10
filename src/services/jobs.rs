@@ -339,4 +339,21 @@ mod tests {
         assert!(finished.finished_at.is_some());
         assert!(finished.finished_at.unwrap() > job.created_at);
     }
+
+    #[test]
+    fn finish_sets_finished_at_v2() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let job = registry.create("scan", "Scanning...").expect("job");
+        let start_time = Utc::now();
+
+        let finished_job = registry
+            .finish(job, "completed", "Done.")
+            .expect("finish job");
+
+        assert_eq!(finished_job.status, "completed");
+        assert_eq!(finished_job.message, "Done.");
+        assert!(finished_job.finished_at.is_some());
+        assert!(finished_job.finished_at.unwrap() >= start_time);
+    }
 }

@@ -269,3 +269,49 @@ impl ValidationRule {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::{ArtifactNode, ArtifactType, HealthStatus, ScopeType};
+
+    #[test]
+    fn test_token_budget() {
+        let mut artifact = ArtifactNode {
+            id: "test".to_string(),
+            path: "test.txt".to_string(),
+            display_path: "test.txt".to_string(),
+            artifact_type: ArtifactType::Instructions,
+            tool_family: "test".to_string(),
+            scope_type: ScopeType::Repo,
+            states: vec![],
+            confidence: 1.0,
+            origin: "test".to_string(),
+            last_indexed_at: chrono::Utc::now(),
+            hash: "abc".to_string(),
+            mtime: None,
+            byte_size: 100,
+            reason: "test".to_string(),
+            metadata: None,
+            health: None,
+        };
+
+        // Small file
+        let res = check_token_budget(&artifact);
+        assert!(res.is_some());
+        assert_eq!(res.unwrap().status, HealthStatus::Healthy);
+
+        // Large file
+        artifact.byte_size = 60_000 * 4;
+        let res = check_token_budget(&artifact);
+        assert!(res.is_some());
+        assert_eq!(res.unwrap().status, HealthStatus::Critical);
+
+        // Medium file
+        artifact.byte_size = 15_000 * 4;
+        let res = check_token_budget(&artifact);
+        assert!(res.is_some());
+        assert_eq!(res.unwrap().status, HealthStatus::Warning);
+    }
+}
+

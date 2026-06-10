@@ -127,7 +127,7 @@ where
             phase: "repo".to_string(),
             message: format!("Indexing {}", project_display_path),
             current_path: Some(project_display_path.clone()),
-            items_done: Some(index),
+            items_done: Some(index + 1),
             items_total: Some(total_projects),
         })?;
         let summary = scan_project(

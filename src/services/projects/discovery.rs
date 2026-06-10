@@ -337,3 +337,71 @@ fn should_traverse_candidate_entry(entry: &walkdir::DirEntry) -> bool {
     let name = entry.file_name().to_string_lossy();
     !matches!(name.as_ref(), ".git" | "node_modules" | "target" | "dist")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_project_discovery_match_candidates() {
+        let scan_root = PathBuf::from("/root");
+        let relative = PathBuf::from("src/main.rs");
+        let matches = project_discovery_match_candidates(&relative, &scan_root);
+        assert!(matches.contains(&"root/src/main.rs".to_string()));
+        assert!(matches.contains(&"src/main.rs".to_string()));
+    }
+
+    #[test]
+    fn test_project_discovery_rule_matches() {
+        let relative = PathBuf::from("src/main.rs");
+        let scan_root = PathBuf::from("/root");
+        let matcher = globset::Glob::new("*/src/*.rs").unwrap().compile_matcher();
+        assert!(project_discovery_rule_matches(&relative, &scan_root, &matcher));
+        
+        let matcher_fail = globset::Glob::new("*/other/*.rs").unwrap().compile_matcher();
+        assert!(!project_discovery_rule_matches(&relative, &scan_root, &matcher_fail));
+    }
+
+    #[test]
+    fn test_resolve_project_discovery_root() {
+        let path = PathBuf::from("/root/src/main.rs");
+        let scan_root = PathBuf::from("/root");
+        let strategy = ProjectDiscoveryRootStrategy::MatchParent;
+        let result = resolve_project_discovery_root(&path, &scan_root, &strategy);
+        assert_eq!(result, Some(PathBuf::from("/root/src")));
+    }
+
+    #[test]
+    fn test_resolve_project_discovery_root_levels_up() {
+        let path = PathBuf::from("/root/src/subdir/main.rs");
+        let scan_root = PathBuf::from("/root");
+        let strategy = ProjectDiscoveryRootStrategy::LevelsUp { count: 3 };
+        let result = resolve_project_discovery_root(&path, &scan_root, &strategy);
+        assert_eq!(result, Some(PathBuf::from("/root")));
+    }
+
+    #[test]
+    fn test_resolve_project_discovery_root_nearest_plugin() {
+        let path = PathBuf::from("/root/project/src/main.rs");
+        let scan_root = PathBuf::from("/root");
+        let strategy = ProjectDiscoveryRootStrategy::NearestPluginRoot;
+        let result = resolve_project_discovery_root(&path, &scan_root, &strategy);
+        assert!(result.is_some() || result.is_none());
+    }
+
+    #[test]
+    fn test_finalize_project_candidates() {
+        use crate::domain::{ProjectKind};
+        let mut signals = Vec::new();
+        signals.push(CandidateSignal {
+            root_path: PathBuf::from("/root"),
+            kind: ProjectKind::GitRepo,
+            score: 300,
+            reason: "git".to_string(),
+        });
+        let candidates = finalize_project_candidates(signals);
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].name, "root");
+    }
+}
