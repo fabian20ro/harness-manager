@@ -392,7 +392,7 @@ mod tests {
 
     #[test]
     fn test_finalize_project_candidates() {
-        use crate::domain::{ProjectKind, ProjectDiscoveryRootStrategy};
+        use crate::domain::{ProjectKind};
         let mut signals = Vec::new();
         signals.push(CandidateSignal {
             root_path: PathBuf::from("/root"),
