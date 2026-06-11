@@ -7,6 +7,7 @@
     "prebuild": "node ./scripts/write-build-meta.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "lint": "tsc -b --pretty false",
     "preview": "vite preview",
     "test": "vitest run"
   },
