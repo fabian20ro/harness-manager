@@ -43,6 +43,9 @@ jobs:
       - name: Install UI deps
         run: npm ci
 
+      - name: Lint UI
+        run: npm run lint
+
       - name: Run UI tests
         run: npm test
 
