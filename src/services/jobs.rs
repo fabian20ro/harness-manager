@@ -187,6 +187,15 @@ impl JobRegistry {
         if let Some(items_total) = patch.items_total {
             job.items_total = items_total;
         }
+        if let (Some(done), Some(total)) = (job.items_done, job.items_total) {
+            if done > total {
+                return Err(anyhow::anyhow!(
+                    "items_done ({}) cannot be greater than items_total ({})",
+                    done,
+                    total
+                ));
+            }
+        }
         self.jobs
             .lock()
             .expect("job registry poisoned")
@@ -355,5 +364,24 @@ mod tests {
         assert_eq!(finished_job.message, "Done.");
         assert!(finished_job.finished_at.is_some());
         assert!(finished_job.finished_at.unwrap() >= start_time);
+    }
+
+    #[test]
+    fn update_prevents_invalid_items_counts() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let mut job = registry.create("scan", "Scanning...").expect("job");
+        job.items_total = Some(10);
+        job.items_done = Some(5);
+
+        let result = registry.update(
+            job.clone(),
+            JobUpdate {
+                items_done: Some(Some(11)),
+                ..JobUpdate::default()
+            },
+        );
+
+        assert!(result.is_err());
     }
 }
