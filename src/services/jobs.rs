@@ -247,12 +247,31 @@ impl JobRegistry {
     }
 
     pub fn find_running_kind(&self, kind: &str) -> Option<JobStatus> {
-        self.jobs
+        // Check in-memory first
+        if let Some(job) = self
+            .jobs
             .lock()
             .expect("job registry poisoned")
             .values()
             .find(|job| job.kind == kind && job.status == "running")
             .cloned()
+        {
+            return Some(job);
+        }
+
+        // Fallback to store
+        let entries = std::fs::read_dir(self.store.root.join("jobs")).ok()?;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().map_or(false, |ext| ext == "json") {
+                if let Ok(job) = self.store.read_json::<JobStatus>(&path) {
+                    if job.kind == kind && job.status == "running" {
+                        return Some(job);
+                    }
+                }
+            }
+        }
+        None
     }
 }
 
