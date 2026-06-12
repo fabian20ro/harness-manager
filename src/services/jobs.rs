@@ -384,4 +384,17 @@ mod tests {
 
         assert!(result.is_err());
     }
+    #[test]
+    fn create_scoped_with_nones_works() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let job = registry
+            .create_scoped("scan", "message", None, None, None)
+            .expect("job");
+
+        assert_eq!(job.kind, "scan");
+        assert_eq!(job.scope_kind, None);
+        assert_eq!(job.project_id, None);
+        assert_eq!(job.tool, None);
+    }
 }
