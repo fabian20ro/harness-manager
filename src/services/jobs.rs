@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use crate::{domain::JobStatus, storage::Store};
 
+#[derive(Debug)]
 pub struct FileWatcher {
     watcher: RecommendedWatcher,
     #[allow(dead_code)]
@@ -26,7 +27,6 @@ impl FileWatcher {
     {
         let (tx, mut rx) = mpsc::unbounded_channel::<PathBuf>();
         let event_tx = tx.clone();
-
         let watcher = RecommendedWatcher::new(
             move |res: notify::Result<notify::Event>| {
                 if let Ok(event) = res {
@@ -92,7 +92,7 @@ impl JobRegistry {
         }
     }
 
-    pub fn setup_watcher<F>(&self, on_event: F) -> Result<()>
+    pub fn setup_watcher<F>(&self, on_event: F) -> Result<Self>
     where
         F: Fn(PathBuf) + Send + 'static,
     {
@@ -100,7 +100,7 @@ impl JobRegistry {
         if watcher_lock.is_none() {
             *watcher_lock = Some(FileWatcher::new(on_event)?);
         }
-        Ok(())
+        Ok(self.clone())
     }
 
     pub fn watch_path(&self, path: &Path) -> Result<()> {
@@ -277,11 +277,9 @@ impl JobRegistry {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use tempfile::TempDir;
-
     use crate::storage::Store;
-
-    use super::{JobRegistry, JobUpdate};
     use chrono::Utc;
 
     #[test]
@@ -396,9 +394,8 @@ mod tests {
         let start_time = Utc::now();
 
         let finished = registry
-            .finish(job.clone(), "completed", "Finished.")
-            .expect("finished");
-
+            .finish(job, "completed", "Done.")
+            .expect("finish job");
         assert!(finished.finished_at.is_some());
         assert!(finished.finished_at.unwrap() >= start_time);
     }
@@ -413,7 +410,6 @@ mod tests {
         let finished_job = registry
             .finish(job, "completed", "Done.")
             .expect("finish job");
-
         assert_eq!(finished_job.status, "completed");
         assert_eq!(finished_job.message, "Done.");
         assert!(finished_job.finished_at.is_some());
@@ -438,6 +434,7 @@ mod tests {
 
         assert!(result.is_err());
     }
+
     #[test]
     fn create_scoped_with_nones_works() {
         let temp = TempDir::new().expect("tempdir");
@@ -445,10 +442,23 @@ mod tests {
         let job = registry
             .create_scoped("scan", "message", None, None, None)
             .expect("job");
-
         assert_eq!(job.kind, "scan");
         assert_eq!(job.scope_kind, None);
         assert_eq!(job.project_id, None);
         assert_eq!(job.tool, None);
+    }
+
+    #[test]
+    fn find_running_kind_fallback_to_store() {
+        let temp = TempDir::new().expect("tempdir");
+        let store = Store::new(temp.path().join("store"));
+        let registry = JobRegistry::new(store.clone());
+        
+        let job = registry.create("scan", "Scanning...").expect("job");
+        
+        let registry_new = JobRegistry::new(store);
+        let found = registry_new.find_running_kind("scan").expect("running scan");
+        assert_eq!(found.id, job.id);
+        assert_eq!(found.status, "running");
     }
 }
