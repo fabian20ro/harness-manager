@@ -436,16 +436,25 @@ mod tests {
     }
 
     #[test]
-    fn create_scoped_with_nones_works() {
+    fn test_update_job_status_and_metadata() {
         let temp = TempDir::new().expect("tempdir");
         let registry = JobRegistry::new(Store::new(temp.path().join("store")));
-        let job = registry
-            .create_scoped("scan", "message", None, None, None)
-            .expect("job");
-        assert_eq!(job.kind, "scan");
-        assert_eq!(job.scope_kind, None);
-        assert_eq!(job.project_id, None);
-        assert_eq!(job.tool, None);
+        let job = registry.create("scan", "Initial message").expect("job");
+        
+        let updated = registry.update(
+            job.clone(),
+            JobUpdate {
+                status: Some("running".to_string()),
+                message: Some("New message".to_string()),
+                phase: Some(Some("indexing".to_string())),
+                ..JobUpdate::default()
+            },
+        ).expect("update");
+
+        assert_eq!(updated.message, "New message");
+        assert_eq!(updated.phase, Some("indexing".to_string()));
+        assert_eq!(updated.status, "running");
+        assert_eq!(updated.id, job.id);
     }
 
     #[test]
