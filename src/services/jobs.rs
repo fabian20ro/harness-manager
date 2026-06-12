@@ -336,17 +336,37 @@ mod tests {
     }
 
     #[test]
+    fn update_errors_on_impossible_progress() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let job = registry.create("scan", "Scanning projects.").expect("job");
+
+        let result = registry.update(
+            job,
+            JobUpdate {
+                items_done: Some(Some(5)),
+                items_total: Some(Some(3)),
+                ..JobUpdate::default()
+            },
+        );
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("cannot be greater than"));
+    }
+
+    #[test]
     fn finish_sets_finished_at() {
         let temp = TempDir::new().expect("tempdir");
         let registry = JobRegistry::new(Store::new(temp.path().join("store")));
-        let job = registry.create("rust", "Scanning...").expect("job");
+        let job = registry.create("scan", "Scanning...").expect("job");
+        let start_time = Utc::now();
 
-        std::thread::sleep(std::time::Duration::from_millis(10));
-
-        let finished = registry.finish(job.clone(), "completed", "Finished.").expect("finished");
+        let finished = registry
+            .finish(job.clone(), "completed", "Finished.")
+            .expect("finished");
 
         assert!(finished.finished_at.is_some());
-        assert!(finished.finished_at.unwrap() > job.created_at);
+        assert!(finished.finished_at.unwrap() >= start_time);
     }
 
     #[test]
