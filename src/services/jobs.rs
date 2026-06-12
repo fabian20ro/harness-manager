@@ -220,21 +220,6 @@ impl JobRegistry {
     /// let finished = registry.finish(job, "completed", "Done.").unwrap();
     /// assert_eq!(finished.status, "completed");
     /// assert!(finished.finished_at.is_some());
-    /// Finishes a job and updates its status with a timestamp.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use harness_inspector::domain::JobStatus;
-    /// # use harness_inspector::services::jobs::JobRegistry;
-    /// # use harness_inspector::storage::Store;
-    /// # use tempfile::TempDir;
-    /// let temp = TempDir::new().unwrap();
-    /// let registry = JobRegistry::new(Store::new(temp.path().join("store")));
-    /// let job = registry.create("scan", "Scanning...").expect("job");
-    /// let finished = registry.finish(job, "completed", "Done.").expect("finished");
-    /// assert_eq!(finished.status, "completed");
-    /// assert!(finished.finished_at.is_some());
     /// ```
     pub fn finish(&self, mut job: JobStatus, status: &str, message: &str) -> Result<JobStatus> {
         job.finished_at = Some(Utc::now());
