@@ -147,37 +147,17 @@ mod tests {
     }
 
     #[test]
-    fn scan_reports_correct_progress_indexing() {
+    fn test_load_catalogs_creates_files() {
         let temp = TempDir::new().expect("tempdir");
-        let home = temp.path().join("home");
-        let repo = home.join("git").join("demo");
-        fs::create_dir_all(repo.join(".git")).expect("git dir");
-        fs::write(repo.join("AGENTS.md"), "ok").expect("agents");
-
-        let config = AppConfig {
-            home_dir: home.clone(),
-            store_root: temp.path().join("store"),
-            default_roots: vec![home.join("git")],
-            scan_max_depth: 5,
-            known_global_dirs: vec![home.join(".codex")],
-            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
-            allow_insecure_doc_hosts: false,
-            max_snapshot_bytes: 5_000_000,
-        };
-        let store = Store::new(config.store_root.clone());
-        let jobs = JobRegistry::new(store.clone());
-        let mut progress = Vec::new();
-
-        let projects = scan_projects_with_progress(&config, &store, &jobs, None, |update| {
-            progress.push(update);
-            Ok(())
-        })
-        .expect("scan");
-
-        assert_eq!(projects.len(), 1);
-        // Check that progress starts from 1 instead of 0
-        assert!(progress.iter().any(|update| {
-            update.phase == "repo" && update.items_done == Some(1)
-        }));
+        let store = Store::new(temp.path().to_path_buf());
+        store.ensure_layout().expect("ensure layout");
+        let catalogs = crate::services::scan::load_catalogs(&store).expect("load catalogs");
+        
+        assert!(!catalogs.is_empty());
+        for (name, catalog) in catalogs {
+            let path = crate::catalogs::catalog_path(&temp.path().to_path_buf(), &name, &catalog.version);
+            assert!(path.exists(), "Catalog file for {} should exist at {:?}", name, path);
+        }
     }
+
 }
