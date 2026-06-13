@@ -188,12 +188,14 @@ impl JobRegistry {
             job.items_total = items_total;
         }
         if let (Some(done), Some(total)) = (job.items_done, job.items_total) {
-            if done > total {
-                return Err(anyhow::anyhow!(
-                    "items_done ({}) cannot be greater than items_total ({})",
-                    done,
-                    total
-                ));
+            if let (Some(done), Some(total)) = (job.items_done, job.items_total) {
+                if done > total {
+                    return Err(anyhow::anyhow!(
+                        "items_done ({}) cannot be greater than items_total ({})",
+                        done,
+                        total
+                    ));
+                }
             }
         }
         self.jobs
