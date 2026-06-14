@@ -458,6 +458,33 @@ mod tests {
     }
 
     #[test]
+    fn update_resets_optional_fields_with_none() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let mut job = registry.create("scan", "Scanning...").expect("job");
+        job.items_done = Some(10);
+        job.items_total = Some(20);
+        job.phase = Some("initial".to_string());
+        
+        let updated = registry.update(
+            job.clone(),
+            JobUpdate {
+                items_done: Some(None),
+                items_total: Some(None),
+                phase: Some(None),
+                ..JobUpdate::default()
+            },
+        ).expect("updated");
+
+        assert!(updated.items_done.is_none());
+        assert!(updated.items_total.is_none());
+        assert!(updated.phase.is_none());
+        assert_eq!(updated.status, "running");
+    }
+
+    #[test]
+
+    #[test]
     fn find_running_kind_fallback_to_store() {
         let temp = TempDir::new().expect("tempdir");
         let store = Store::new(temp.path().join("store"));
