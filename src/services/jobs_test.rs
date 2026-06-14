@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
     use crate::services::jobs::{JobRegistry, JobUpdate};
-    use crate::domain::JobStatus;
     use crate::storage::Store;
     use tempfile::TempDir;
     use chrono::Utc;
