@@ -517,4 +517,4 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("cannot finish a job that is not running"));
     }
-}
+}// autoreply: task already completed
