@@ -108,11 +108,34 @@ mod tests {
         assert_eq!(found.id, job.id);
     }
 
-    #[tokio::test]
-    async fn test_get_returns_none_if_not_found() {
-        let temp = TempDir::new().unwrap();
+    #[test]
+    fn test_update_error_on_invalid_progress() {
+        let temp = TempDir::new().expect("tempdir");
         let registry = JobRegistry::new(Store::new(temp.path().join("store")));
-        let found = registry.get("non-existent-id").unwrap();
-        assert!(found.is_none());
+        let job = registry.create("scan", "Scanning projects.").expect("job");
+        
+        let result = registry.update(
+            job.clone(),
+            JobUpdate {
+                items_done: Some(Some(5)),
+                items_total: Some(Some(3)),
+                ..JobUpdate::default()
+            },
+        );
+        
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("cannot be greater than"));
+    }
+
+    #[test]
+    fn test_finish_error_on_non_running_job() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let mut job = registry.create("scan", "Scanning...").expect("job");
+        job.status = "completed".to_string();
+        
+        let result = registry.finish(job, "completed", "Done.");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("cannot finish a job that is not running"));
     }
 }
