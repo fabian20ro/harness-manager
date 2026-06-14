@@ -483,8 +483,6 @@ mod tests {
     }
 
     #[test]
-
-    #[test]
     fn find_running_kind_fallback_to_store() {
         let temp = TempDir::new().expect("tempdir");
         let store = Store::new(temp.path().join("store"));
