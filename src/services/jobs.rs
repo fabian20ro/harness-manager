@@ -222,6 +222,12 @@ impl JobRegistry {
     /// assert!(finished.finished_at.is_some());
     /// ```
     pub fn finish(&self, mut job: JobStatus, status: &str, message: &str) -> Result<JobStatus> {
+        if job.status != "running" {
+            return Err(anyhow::anyhow!(
+                "cannot finish a job that is not running (current status: {})",
+                job.status
+            ));
+        }
         job.finished_at = Some(Utc::now());
         self.update(
             job,
@@ -494,5 +500,17 @@ mod tests {
         let found = registry_new.find_running_kind("scan").expect("running scan");
         assert_eq!(found.id, job.id);
         assert_eq!(found.status, "running");
+    }
+
+    #[test]
+    fn finish_fails_on_non_running_job() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let mut job = registry.create("scan", "Scanning...").expect("job");
+        job.status = "completed".to_string();
+        
+        let result = registry.finish(job, "completed", "Done.");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("cannot finish a job that is not running"));
     }
 }
