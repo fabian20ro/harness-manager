@@ -149,6 +149,7 @@ impl JobRegistry {
             current_path: None,
             items_done: None,
             items_total: None,
+            progress: None,
         };
         self.jobs
             .lock()
@@ -194,8 +195,11 @@ impl JobRegistry {
                     done,
                     total
                 ));
+            } else if total > 0 {
+                job.progress = Some(done as f64 / total as f64);
             }
         }
+
         self.jobs
             .lock()
             .expect("job registry poisoned")
