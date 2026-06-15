@@ -159,6 +159,25 @@ mod tests {
     }
 
     #[test]
+    fn test_update_with_missing_total_does_not_set_progress() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let mut job = registry.create("scan", "Scanning...").expect("job");
+        job.items_total = None;
+        job.items_done = Some(5);
+
+        let updated = registry.update(
+            job.clone(),
+            JobUpdate {
+                items_done: Some(Some(5)),
+                ..JobUpdate::default()
+            },
+        ).expect("updated");
+
+        assert!(updated.progress.is_none());
+    }
+
+    #[test]
     fn test_finish_sets_progress_to_one() {
         let temp = TempDir::new().expect("tempdir");
         let registry = JobRegistry::new(Store::new(temp.path().join("store")));
