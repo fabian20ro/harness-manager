@@ -233,14 +233,16 @@ impl JobRegistry {
             ));
         }
         job.finished_at = Some(Utc::now());
-        self.update(
+        let mut finished_job = self.update(
             job,
             JobUpdate {
                 status: Some(status.to_string()),
                 message: Some(message.to_string()),
                 ..JobUpdate::default()
             },
-        )
+        )?;
+        finished_job.progress = Some(1.0);
+        Ok(finished_job)
     }
 
     pub fn get(&self, job_id: &str) -> Result<Option<JobStatus>> {
