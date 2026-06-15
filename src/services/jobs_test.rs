@@ -20,7 +20,7 @@ mod tests {
         let temp = TempDir::new().expect("tempdir");
         let registry = JobRegistry::new(Store::new(temp.path().join("store")));
         let job = registry.create("scan", "Scanning...").expect("job");
-    
+
         assert_eq!(job.kind, "scan");
         assert_eq!(job.status, "running");
         assert_eq!(job.message, "Scanning...");
@@ -30,7 +30,7 @@ mod tests {
         assert!(job.tool.is_none());
         assert!(job.phase.is_none());
     }
-    
+
     #[test]
     fn test_create_scoped_sets_project_and_tool() {
         let temp = TempDir::new().expect("tempdir");
@@ -38,7 +38,7 @@ mod tests {
         let job = registry
             .create_scoped("scan", "Scanning...", None, Some("global"), Some("claude-code"))
             .expect("job");
-    
+
         assert_eq!(job.kind, "scan");
         assert_eq!(job.project_id.as_deref(), Some("global"));
         assert_eq!(job.tool.as_deref(), Some("claude-code"));
@@ -49,7 +49,7 @@ mod tests {
         let temp = TempDir::new().expect("tempdir");
         let registry = JobRegistry::new(Store::new(temp.path().join("store")));
         let job = registry.create("scan", "Scanning projects.").expect("job");
-    
+
         let updated = registry.update(
             job.clone(),
             JobUpdate {
@@ -62,7 +62,7 @@ mod tests {
                 ..JobUpdate::default()
             },
         ).expect("updated");
-    
+
         assert_eq!(updated.id, job.id);
         assert_eq!(updated.status, "running");
         assert_eq!(updated.scope_kind.as_deref(), Some("global"));
@@ -70,8 +70,27 @@ mod tests {
         assert_eq!(updated.current_path.as_deref(), Some("~/git/demo"));
         assert_eq!(updated.items_done, Some(1));
         assert_eq!(updated.items_total, Some(3));
+        assert_eq!(updated.progress, Some(1.0 / 3.0));
     }
-    
+
+    #[test]
+    fn test_update_sets_progress() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let mut job = registry.create("scan", "Scanning...").expect("job");
+        job.items_total = Some(10);
+
+        let updated = registry.update(
+            job.clone(),
+            JobUpdate {
+                items_done: Some(Some(5)),
+                ..JobUpdate::default()
+            },
+        ).expect("updated");
+
+        assert_eq!(updated.progress, Some(0.5));
+    }
+
     #[test]
     fn test_find_running_kind_returns_only_running_jobs() {
         let temp = TempDir::new().expect("tempdir");
@@ -84,18 +103,18 @@ mod tests {
         registry
             .finish(other_job, "completed", "Done.")
             .expect("finish other job");
-    
+
         let found = registry.find_running_kind("scan").expect("running scan");
         assert_eq!(found.id, scan_job.id);
         assert!(registry.find_running_kind("refresh-activity").is_none());
     }
-    
+
     #[test]
     fn test_create_sets_created_at() {
         let temp = TempDir::new().expect("tempdir");
         let registry = JobRegistry::new(Store::new(temp.path().join("store")));
         let job = registry.create("scan", "Scanning...").expect("job");
-    
+
         assert!(job.created_at <= Utc::now());
     }
 
@@ -113,7 +132,7 @@ mod tests {
         let temp = TempDir::new().expect("tempdir");
         let registry = JobRegistry::new(Store::new(temp.path().join("store")));
         let job = registry.create("scan", "Scanning projects.").expect("job");
-        
+
         let result = registry.update(
             job.clone(),
             JobUpdate {
@@ -122,7 +141,7 @@ mod tests {
                 ..JobUpdate::default()
             },
         );
-        
+
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("cannot be greater than"));
     }
@@ -133,7 +152,7 @@ mod tests {
         let registry = JobRegistry::new(Store::new(temp.path().join("store")));
         let mut job = registry.create("scan", "Scanning...").expect("job");
         job.status = "completed".to_string();
-        
+
         let result = registry.finish(job, "completed", "Done.");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("cannot finish a job that is not running"));
