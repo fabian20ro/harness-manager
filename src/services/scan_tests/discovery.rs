@@ -147,6 +147,37 @@ mod tests {
     }
 
     #[test]
+    fn scan_reports_error_on_progress_failure() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let repo = home.join("git").join("demo");
+        fs::create_dir_all(repo.join(".git")).expect("git dir");
+        fs::write(repo.join("AGENTS.md"), "@./policy.md").expect("agents");
+        fs::write(repo.join("policy.md"), "ok").expect("policy");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![home.join("git")],
+            scan_max_depth: 5,
+            known_global_dirs: vec![home.join(".codex")],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        let jobs = JobRegistry::new(store.clone());
+
+        let result = scan_projects_with_progress(&config, &store, &jobs, None, |_| {
+            Err(anyhow::anyhow!("intentional error"))
+        });
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "intentional error");
+    }
+
+
+    #[test]
     fn test_load_catalogs_creates_files() {
         let temp = TempDir::new().expect("tempdir");
         let store = Store::new(temp.path().to_path_buf());

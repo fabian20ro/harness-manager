@@ -435,6 +435,7 @@ pub struct JobStatus {
     pub current_path: Option<String>,
     pub items_done: Option<usize>,
     pub items_total: Option<usize>,
+    pub progress: Option<f64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

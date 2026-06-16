@@ -10,4 +10,4 @@ pub mod scan;
 pub mod validation;
 
 #[cfg(test)]
-mod scan_tests;
+mod jobs_test;

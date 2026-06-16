@@ -1,6 +1,8 @@
 .cargo
+.cargo_cache/
 .cargo_home/
 /target
+/target_autopilot/
 /ui/node_modules
 /ui/dist
 /ui/.npm-cache

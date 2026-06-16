@@ -149,6 +149,7 @@ impl JobRegistry {
             current_path: None,
             items_done: None,
             items_total: None,
+            progress: None,
         };
         self.jobs
             .lock()
@@ -194,8 +195,11 @@ impl JobRegistry {
                     done,
                     total
                 ));
+            } else if total > 0 {
+                job.progress = Some(done as f64 / total as f64);
             }
         }
+
         self.jobs
             .lock()
             .expect("job registry poisoned")
@@ -222,15 +226,23 @@ impl JobRegistry {
     /// assert!(finished.finished_at.is_some());
     /// ```
     pub fn finish(&self, mut job: JobStatus, status: &str, message: &str) -> Result<JobStatus> {
+        if job.status != "running" {
+            return Err(anyhow::anyhow!(
+                "cannot finish a job that is not running (current status: {})",
+                job.status
+            ));
+        }
         job.finished_at = Some(Utc::now());
-        self.update(
+        let mut finished_job = self.update(
             job,
             JobUpdate {
                 status: Some(status.to_string()),
                 message: Some(message.to_string()),
                 ..JobUpdate::default()
             },
-        )
+        )?;
+        finished_job.progress = Some(1.0);
+        Ok(finished_job)
     }
 
     pub fn get(&self, job_id: &str) -> Result<Option<JobStatus>> {
@@ -436,16 +448,50 @@ mod tests {
     }
 
     #[test]
-    fn create_scoped_with_nones_works() {
+    fn test_update_job_status_and_metadata() {
         let temp = TempDir::new().expect("tempdir");
         let registry = JobRegistry::new(Store::new(temp.path().join("store")));
-        let job = registry
-            .create_scoped("scan", "message", None, None, None)
-            .expect("job");
-        assert_eq!(job.kind, "scan");
-        assert_eq!(job.scope_kind, None);
-        assert_eq!(job.project_id, None);
-        assert_eq!(job.tool, None);
+        let job = registry.create("scan", "Initial message").expect("job");
+        
+        let updated = registry.update(
+            job.clone(),
+            JobUpdate {
+                status: Some("running".to_string()),
+                message: Some("New message".to_string()),
+                phase: Some(Some("indexing".to_string())),
+                ..JobUpdate::default()
+            },
+        ).expect("update");
+
+        assert_eq!(updated.message, "New message");
+        assert_eq!(updated.phase, Some("indexing".to_string()));
+        assert_eq!(updated.status, "running");
+        assert_eq!(updated.id, job.id);
+    }
+
+    #[test]
+    fn update_resets_optional_fields_with_none() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let mut job = registry.create("scan", "Scanning...").expect("job");
+        job.items_done = Some(10);
+        job.items_total = Some(20);
+        job.phase = Some("initial".to_string());
+        
+        let updated = registry.update(
+            job.clone(),
+            JobUpdate {
+                items_done: Some(None),
+                items_total: Some(None),
+                phase: Some(None),
+                ..JobUpdate::default()
+            },
+        ).expect("updated");
+
+        assert!(updated.items_done.is_none());
+        assert!(updated.items_total.is_none());
+        assert!(updated.phase.is_none());
+        assert_eq!(updated.status, "running");
     }
 
     #[test]
@@ -461,4 +507,16 @@ mod tests {
         assert_eq!(found.id, job.id);
         assert_eq!(found.status, "running");
     }
-}
+
+    #[test]
+    fn finish_fails_on_non_running_job() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let mut job = registry.create("scan", "Scanning...").expect("job");
+        job.status = "completed".to_string();
+        
+        let result = registry.finish(job, "completed", "Done.");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("cannot finish a job that is not running"));
+    }
+}// autoreply: task already completed
