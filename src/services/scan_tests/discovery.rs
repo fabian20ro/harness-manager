@@ -147,6 +147,30 @@ mod tests {
     }
 
     #[test]
+    fn scan_handles_empty_roots() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let repo = home.join("git").join("demo");
+        fs::create_dir_all(repo.join(".git")).expect("git dir");
+        fs::write(repo.join("AGENTS.md"), "ok").expect("agents");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![],
+            scan_max_depth: 5,
+            known_global_dirs: vec![],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        let jobs = JobRegistry::new(store.clone());
+        let projects = scan_projects(&config, &store, &jobs, Some(vec![].into_iter().map(|s| s.to_string()).collect())).expect("scan");
+        assert_eq!(projects.len(), 1);
+    }
+
+    #[test]
     fn scan_reports_error_on_progress_failure() {
         let temp = TempDir::new().expect("tempdir");
         let home = temp.path().join("home");
