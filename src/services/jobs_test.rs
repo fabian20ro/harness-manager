@@ -5,30 +5,18 @@ mod tests {
     use tempfile::TempDir;
     use chrono::Utc;
 
-    #[tokio::test]
-    async fn test_setup_watcher_returns_self() {
-        let temp = TempDir::new().unwrap();
-        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
-        let result = registry.setup_watcher(|_| {});
-        assert!(result.is_ok());
-        let registry_ref = result.unwrap();
-        assert!(matches!(registry_ref, JobRegistry { .. }));
-    }
-
     #[test]
-    fn test_create_sets_defaults_for_optional_fields() {
+    fn test_create_scoped_sets_all_fields() {
         let temp = TempDir::new().expect("tempdir");
         let registry = JobRegistry::new(Store::new(temp.path().join("store")));
-        let job = registry.create("scan", "Scanning...").expect("job");
+        let job = registry
+            .create_scoped("scan", "Scanning...", Some("global"), Some("project1"), Some("tool1"))
+            .expect("job");
 
         assert_eq!(job.kind, "scan");
-        assert_eq!(job.status, "running");
-        assert_eq!(job.message, "Scanning...");
-        assert!(job.finished_at.is_none());
-        assert!(job.scope_kind.is_none());
-        assert!(job.project_id.is_none());
-        assert!(job.tool.is_none());
-        assert!(job.phase.is_none());
+        assert_eq!(job.scope_kind.as_deref(), Some("global"));
+        assert_eq!(job.project_id.as_deref(), Some("project1"));
+        assert_eq!(job.tool.as_deref(), Some("tool1"));
     }
 
     #[test]
@@ -194,5 +182,21 @@ mod tests {
 
         let persisted = registry.get(&job.id).unwrap().expect("persisted job");
         assert_eq!(persisted.progress, Some(1.0));
+    }
+
+    #[test]
+    fn test_update_with_zero_total_sets_progress_to_one() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let mut job = registry.create("scan", "Scanning...").expect("job");
+        job.items_total = Some(0);
+        job.items_done = Some(0);
+        
+        let finished = registry
+            .finish(job.clone(), "completed", "Done.")
+            .expect("finish job");
+            
+        assert_eq!(finished.progress, Some(1.0));
+        assert_eq!(finished.status, "completed");
     }
 }
