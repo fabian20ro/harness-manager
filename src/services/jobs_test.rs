@@ -186,10 +186,13 @@ mod tests {
         job.items_done = Some(5);
         
         let finished = registry
-            .finish(job, "completed", "Done.")
+            .finish(job.clone(), "completed", "Done.")
             .expect("finish job");
             
         assert_eq!(finished.progress, Some(1.0));
         assert_eq!(finished.status, "completed");
+
+        let persisted = registry.get(&job.id).unwrap().expect("persisted job");
+        assert_eq!(persisted.progress, Some(1.0));
     }
 }
