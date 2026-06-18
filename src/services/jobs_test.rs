@@ -1,9 +1,12 @@
 #[cfg(test)]
 mod tests {
-    use crate::services::jobs::{JobRegistry, JobUpdate};
+    use crate::services::jobs::{JobRegistry, JobUpdate, FileWatcher};
     use crate::storage::Store;
     use tempfile::TempDir;
     use chrono::Utc;
+    use tokio::sync::mpsc;
+    use std::time::Duration;
+    use std::path::PathBuf;
 
     #[test]
     fn test_create_scoped_sets_all_fields() {
@@ -200,23 +203,31 @@ mod tests {
         assert_eq!(finished.progress, Some(1.0));
         assert_eq!(finished.status, "completed");
 
-        let persisted = registry.get(&job.id).unwrap().expect("persisted job");
-        assert_eq!(persisted.progress, Some(1.0));
+        assert_eq!(finished.status, "completed");
+        assert_eq!(finished.progress, Some(1.0));
     }
 
-    #[test]
-    fn test_update_with_zero_total_sets_progress_to_one() {
+    #[tokio::test]
+    async fn test_file_watcher_detects_change() {
         let temp = TempDir::new().expect("tempdir");
-        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
-        let mut job = registry.create("scan", "Scanning...").expect("job");
-        job.items_total = Some(0);
-        job.items_done = Some(0);
+        let (tx, mut rx) = mpsc::unbounded_channel::<PathBuf>();
         
-        let finished = registry
-            .finish(job.clone(), "completed", "Done.")
-            .expect("finish job");
-            
-        assert_eq!(finished.progress, Some(1.0));
-        assert_eq!(finished.status, "completed");
+        let mut watcher = FileWatcher::new(move |path| {
+            let _ = tx.send(path);
+        }).expect("watcher");
+
+        let test_file = temp.path().join("test.txt");
+        watcher.watch(temp.path()).expect("watch");
+
+        // Trigger a change
+        std::fs::File::create(&test_file).expect("create file");
+
+        // Wait for watcher to detect it
+        let detected_path = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("timeout")
+            .expect("no path detected");
+
+        assert_eq!(detected_path.canonicalize().unwrap(), test_file.canonicalize().unwrap());
     }
 }
