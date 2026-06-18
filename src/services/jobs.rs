@@ -203,6 +203,8 @@ impl JobRegistry {
                 ));
             } else if total > 0 {
                 job.progress = Some(done as f64 / total as f64);
+            } else {
+                job.progress = Some(1.0);
             }
         }
         self.jobs

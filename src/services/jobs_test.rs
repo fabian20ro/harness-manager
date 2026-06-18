@@ -166,6 +166,26 @@ mod tests {
     }
 
     #[test]
+    fn test_update_sets_progress_to_one_for_zero_total() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let mut job = registry.create("scan", "Scanning...").expect("job");
+        job.items_total = Some(0);
+        job.items_done = Some(0);
+        
+        let updated = registry.update(
+            job.clone(),
+            JobUpdate {
+                items_done: Some(Some(0)),
+                items_total: Some(Some(0)),
+                ..JobUpdate::default()
+            },
+        ).expect("updated");
+
+        assert_eq!(updated.progress, Some(1.0));
+    }
+
+    #[test]
     fn test_finish_sets_progress_to_one() {
         let temp = TempDir::new().expect("tempdir");
         let registry = JobRegistry::new(Store::new(temp.path().join("store")));
