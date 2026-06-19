@@ -110,8 +110,8 @@ mod tests {
         .expect("scan");
 
         assert_eq!(projects.len(), 1);
-        assert!(progress.iter().any(|update| update.phase == "repo"));
-        assert!(progress.iter().any(|update| update.phase == "walk"));
+        assert!(progress.iter().any(|update| update.phase == "repo" && update.items_done == Some(1)));
+        assert!(progress.iter().any(|update| update.phase == "walk" && update.items_done == Some(1)));
         assert!(progress
             .iter()
             .any(|update| update.current_path.as_deref() == Some("~/git/demo/docs")));
