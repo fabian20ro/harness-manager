@@ -66,6 +66,13 @@ pub fn discover_project_candidates_with_progress(
     let mut signals = Vec::new();
     for root in &search_roots {
         if !root.exists() {
+            on_progress(ScanProgress {
+                phase: "root".to_string(),
+                message: format!("Root {} does not exist", display_path(root, home_dir)),
+                current_path: Some(root.to_string_lossy().to_string()),
+                items_done: None,
+                items_total: None,
+            })?;
             continue;
         }
 
