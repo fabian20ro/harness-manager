@@ -5,6 +5,8 @@ use std::{
     time::Duration,
 };
 
+const WATCHER_POLL_INTERVAL: Duration = Duration::from_millis(500);
+
 use anyhow::{Context, Result};
 use chrono::Utc;
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
@@ -36,7 +38,7 @@ impl FileWatcher {
                     }
                 }
             },
-            Config::default().with_poll_interval(Duration::from_millis(500)),
+            Config::default().with_poll_interval(WATCHER_POLL_INTERVAL),
         )?;
 
         tokio::spawn(async move {
