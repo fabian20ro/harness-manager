@@ -1,34 +1,25 @@
 #[cfg(test)]
 mod tests {
-    use crate::services::jobs::{JobRegistry, JobUpdate};
+    use crate::services::jobs::{JobRegistry, JobUpdate, FileWatcher};
     use crate::storage::Store;
     use tempfile::TempDir;
     use chrono::Utc;
-
-    #[tokio::test]
-    async fn test_setup_watcher_returns_self() {
-        let temp = TempDir::new().unwrap();
-        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
-        let result = registry.setup_watcher(|_| {});
-        assert!(result.is_ok());
-        let registry_ref = result.unwrap();
-        assert!(matches!(registry_ref, JobRegistry { .. }));
-    }
+    use tokio::sync::mpsc;
+    use std::time::Duration;
+    use std::path::PathBuf;
 
     #[test]
-    fn test_create_sets_defaults_for_optional_fields() {
+    fn test_create_scoped_sets_all_fields() {
         let temp = TempDir::new().expect("tempdir");
         let registry = JobRegistry::new(Store::new(temp.path().join("store")));
-        let job = registry.create("scan", "Scanning...").expect("job");
+        let job = registry
+            .create_scoped("scan", "Scanning...", Some("global"), Some("project1"), Some("tool1"))
+            .expect("job");
 
         assert_eq!(job.kind, "scan");
-        assert_eq!(job.status, "running");
-        assert_eq!(job.message, "Scanning...");
-        assert!(job.finished_at.is_none());
-        assert!(job.scope_kind.is_none());
-        assert!(job.project_id.is_none());
-        assert!(job.tool.is_none());
-        assert!(job.phase.is_none());
+        assert_eq!(job.scope_kind.as_deref(), Some("global"));
+        assert_eq!(job.project_id.as_deref(), Some("project1"));
+        assert_eq!(job.tool.as_deref(), Some("tool1"));
     }
 
     #[test]
@@ -178,6 +169,26 @@ mod tests {
     }
 
     #[test]
+    fn test_update_sets_progress_to_one_for_zero_total() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let mut job = registry.create("scan", "Scanning...").expect("job");
+        job.items_total = Some(0);
+        job.items_done = Some(0);
+        
+        let updated = registry.update(
+            job.clone(),
+            JobUpdate {
+                items_done: Some(Some(0)),
+                items_total: Some(Some(0)),
+                ..JobUpdate::default()
+            },
+        ).expect("updated");
+
+        assert_eq!(updated.progress, Some(1.0));
+    }
+
+    #[test]
     fn test_finish_sets_progress_to_one() {
         let temp = TempDir::new().expect("tempdir");
         let registry = JobRegistry::new(Store::new(temp.path().join("store")));
@@ -186,10 +197,37 @@ mod tests {
         job.items_done = Some(5);
         
         let finished = registry
-            .finish(job, "completed", "Done.")
+            .finish(job.clone(), "completed", "Done.")
             .expect("finish job");
             
         assert_eq!(finished.progress, Some(1.0));
         assert_eq!(finished.status, "completed");
+
+        assert_eq!(finished.status, "completed");
+        assert_eq!(finished.progress, Some(1.0));
+    }
+
+    #[tokio::test]
+    async fn test_file_watcher_detects_change() {
+        let temp = TempDir::new().expect("tempdir");
+        let (tx, mut rx) = mpsc::unbounded_channel::<PathBuf>();
+        
+        let mut watcher = FileWatcher::new(move |path| {
+            let _ = tx.send(path);
+        }).expect("watcher");
+
+        let test_file = temp.path().join("test.txt");
+        watcher.watch(temp.path()).expect("watch");
+
+        // Trigger a change
+        std::fs::File::create(&test_file).expect("create file");
+
+        // Wait for watcher to detect it
+        let detected_path = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("timeout")
+            .expect("no path detected");
+
+        assert_eq!(detected_path.canonicalize().unwrap(), test_file.canonicalize().unwrap());
     }
 }

@@ -15,6 +15,32 @@ mod tests {
     use crate::services::jobs::JobRegistry;
 
     #[test]
+    fn scan_returns_empty_for_empty_roots() {
+        let temp = TempDir::new().expect("tempdir");
+        let home = temp.path().join("home");
+        let repo = home.join("git").join("demo");
+        fs::create_dir_all(repo.join(".git")).expect("git dir");
+        fs::write(repo.join("AGENTS.md"), "@./policy.md").expect("agents");
+        fs::write(repo.join("policy.md"), "ok").expect("policy");
+
+        let config = AppConfig {
+            home_dir: home.clone(),
+            store_root: temp.path().join("store"),
+            default_roots: vec![],
+            scan_max_depth: 5,
+            known_global_dirs: vec![],
+            allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
+            allow_insecure_doc_hosts: false,
+            max_snapshot_bytes: 5_000_000,
+        };
+        let store = Store::new(config.store_root.clone());
+        let jobs = JobRegistry::new(store.clone());
+        let projects = scan_projects(&config, &store, &jobs, Some(vec![].into_iter().map(|s| s.to_string()).collect())).expect("scan");
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].kind, ProjectKind::GitRepo);
+    }
+
+    #[test]
     fn scan_finds_repo_and_codex_artifacts() {
         let temp = TempDir::new().expect("tempdir");
         let home = temp.path().join("home");
@@ -84,8 +110,8 @@ mod tests {
         .expect("scan");
 
         assert_eq!(projects.len(), 1);
-        assert!(progress.iter().any(|update| update.phase == "repo"));
-        assert!(progress.iter().any(|update| update.phase == "walk"));
+        assert!(progress.iter().any(|update| update.phase == "repo" && update.items_done == Some(1)));
+        assert!(progress.iter().any(|update| update.phase == "walk" && update.items_done == Some(1)));
         assert!(progress
             .iter()
             .any(|update| update.current_path.as_deref() == Some("~/git/demo/docs")));
@@ -147,17 +173,15 @@ mod tests {
     }
 
     #[test]
-    fn scan_handles_empty_roots() {
+    fn scan_handles_non_existent_root() {
         let temp = TempDir::new().expect("tempdir");
         let home = temp.path().join("home");
-        let repo = home.join("git").join("demo");
-        fs::create_dir_all(repo.join(".git")).expect("git dir");
-        fs::write(repo.join("AGENTS.md"), "ok").expect("agents");
+        let non_existent = home.join("non_existent");
 
         let config = AppConfig {
             home_dir: home.clone(),
             store_root: temp.path().join("store"),
-            default_roots: vec![],
+            default_roots: vec![non_existent.clone()],
             scan_max_depth: 5,
             known_global_dirs: vec![],
             allowed_origins: vec!["http://127.0.0.1:4173".to_string()],
@@ -166,8 +190,8 @@ mod tests {
         };
         let store = Store::new(config.store_root.clone());
         let jobs = JobRegistry::new(store.clone());
-        let projects = scan_projects(&config, &store, &jobs, Some(vec![].into_iter().map(|s| s.to_string()).collect())).expect("scan");
-        assert_eq!(projects.len(), 1);
+        let projects = scan_projects(&config, &store, &jobs, None).expect("scan");
+        assert_eq!(projects.len(), 0);
     }
 
     #[test]
@@ -200,7 +224,6 @@ mod tests {
         assert_eq!(result.unwrap_err().to_string(), "intentional error");
     }
 
-
     #[test]
     fn test_load_catalogs_creates_files() {
         let temp = TempDir::new().expect("tempdir");
@@ -214,5 +237,4 @@ mod tests {
             assert!(path.exists(), "Catalog file for {} should exist at {:?}", name, path);
         }
     }
-
 }

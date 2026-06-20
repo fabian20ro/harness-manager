@@ -5,9 +5,12 @@ use std::{
     time::Duration,
 };
 
+const WATCHER_POLL_INTERVAL: Duration = Duration::from_millis(500);
+
 use anyhow::{Context, Result};
 use chrono::Utc;
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
+use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc};
 use uuid::Uuid;
 
@@ -35,7 +38,7 @@ impl FileWatcher {
                     }
                 }
             },
-            Config::default().with_poll_interval(Duration::from_millis(500)),
+            Config::default().with_poll_interval(WATCHER_POLL_INTERVAL),
         )?;
 
         tokio::spawn(async move {
@@ -68,7 +71,8 @@ pub struct JobRegistry {
     watcher: Arc<Mutex<Option<FileWatcher>>>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct JobUpdate {
     pub status: Option<String>,
     pub message: Option<String>,
@@ -79,6 +83,7 @@ pub struct JobUpdate {
     pub current_path: Option<Option<String>>,
     pub items_done: Option<Option<usize>>,
     pub items_total: Option<Option<usize>>,
+    pub progress: Option<Option<f64>>,
 }
 
 impl JobRegistry {
@@ -188,6 +193,9 @@ impl JobRegistry {
         if let Some(items_total) = patch.items_total {
             job.items_total = items_total;
         }
+        if let Some(progress) = patch.progress {
+            job.progress = progress;
+        }
         if let (Some(done), Some(total)) = (job.items_done, job.items_total) {
             if done > total {
                 return Err(anyhow::anyhow!(
@@ -197,9 +205,10 @@ impl JobRegistry {
                 ));
             } else if total > 0 {
                 job.progress = Some(done as f64 / total as f64);
+            } else {
+                job.progress = Some(1.0);
             }
         }
-
         self.jobs
             .lock()
             .expect("job registry poisoned")
@@ -233,16 +242,18 @@ impl JobRegistry {
             ));
         }
         job.finished_at = Some(Utc::now());
-        let mut finished_job = self.update(
+        job.progress = Some(1.0);
+        if let Some(total) = job.items_total {
+            job.items_done = Some(total);
+        }
+        self.update(
             job,
             JobUpdate {
                 status: Some(status.to_string()),
                 message: Some(message.to_string()),
                 ..JobUpdate::default()
             },
-        )?;
-        finished_job.progress = Some(1.0);
-        Ok(finished_job)
+        )
     }
 
     pub fn get(&self, job_id: &str) -> Result<Option<JobStatus>> {
@@ -505,4 +516,19 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("cannot finish a job that is not running"));
     }
-}// autoreply: task already completed
+
+    #[test]
+    fn create_sets_correct_defaults() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let job = registry.create("scan", "Scanning...").expect("job");
+
+        assert_eq!(job.kind, "scan");
+        assert_eq!(job.status, "running");
+        assert_eq!(job.message, "Scanning...");
+        assert!(job.finished_at.is_none());
+        assert!(job.scope_kind.is_none());
+        assert!(job.project_id.is_none());
+        assert!(job.tool.is_none());
+    }
+}

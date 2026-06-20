@@ -211,7 +211,7 @@ where
         phase: "repo".to_string(),
         message: format!("Reindexing {} for {}", catalog.display_name, repo_display_path),
         current_path: Some(repo_display_path.clone()),
-        items_done: Some(0),
+        items_done: Some(1),
         items_total: Some(1),
     })?;
 
@@ -224,7 +224,7 @@ where
                 phase: "walk".to_string(),
                 message: format!("Scanning {current_dir}"),
                 current_path: Some(current_dir),
-                items_done: Some(0),
+                items_done: Some(1),
                 items_total: Some(1),
             })
         },
@@ -361,7 +361,7 @@ pub(crate) fn collect_repo_files_with_progress(
         .filter(|entry| entry.path() != root)
         .filter(|entry| {
             let name = entry.file_name().to_string_lossy();
-            !matches!(name.as_ref(), ".git" | "node_modules" | "target" | "dist")
+            !matches!(name.as_ref(), ".git" | "node_modules" | "target" | "dist" | "vendor")
         })
     {
         if entry.file_type().is_dir() {
