@@ -516,4 +516,19 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("cannot finish a job that is not running"));
     }
+
+    #[test]
+    fn create_sets_correct_defaults() {
+        let temp = TempDir::new().expect("tempdir");
+        let registry = JobRegistry::new(Store::new(temp.path().join("store")));
+        let job = registry.create("scan", "Scanning...").expect("job");
+
+        assert_eq!(job.kind, "scan");
+        assert_eq!(job.status, "running");
+        assert_eq!(job.message, "Scanning...");
+        assert!(job.finished_at.is_none());
+        assert!(job.scope_kind.is_none());
+        assert!(job.project_id.is_none());
+        assert!(job.tool.is_none());
+    }
 }
