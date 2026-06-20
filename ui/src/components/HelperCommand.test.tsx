@@ -14,4 +14,15 @@ describe("HelperCommand", () => {
     fireEvent.click(copyButton);
     expect(onCopy).toHaveBeenCalledTimes(1);
   });
+
+  it("renders a custom command and copy button", () => {
+    const onCopy = vi.fn();
+    const customCommand = "npm test";
+    render(<HelperCommand command={customCommand} onCopy={onCopy} />);
+
+    expect(screen.getByText(customCommand)).toBeInTheDocument();
+    const copyButton = screen.getByRole("button", { name: "Copy" });
+    fireEvent.click(copyButton);
+    expect(onCopy).toHaveBeenCalledTimes(1);
+  });
 });
