@@ -361,7 +361,7 @@ pub(crate) fn collect_repo_files_with_progress(
         .filter(|entry| entry.path() != root)
         .filter(|entry| {
             let name = entry.file_name().to_string_lossy();
-            !matches!(name.as_ref(), ".git" | "node_modules" | "target" | "dist")
+            !matches!(name.as_ref(), ".git" | "node_modules" | "target" | "dist" | "vendor")
         })
     {
         if entry.file_type().is_dir() {
