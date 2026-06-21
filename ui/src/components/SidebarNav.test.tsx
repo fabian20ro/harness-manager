@@ -73,4 +73,49 @@ describe("SidebarNav", () => {
     expect(screen.getByText("HI")).toBeInTheDocument();
     expect(screen.queryByText("Harness Inspector")).not.toBeInTheDocument();
   });
+
+  it("calls onSelectTab when a menu item is clicked", () => {
+    const onSelectTab = vi.fn();
+    render(
+      <SidebarNav
+        navigation={{
+          activeTab: "Projects",
+          onSelectTab,
+        }}
+        collapse={{
+          collapsed: false,
+          onToggleCollapse: () => {},
+        }}
+        reindex={{
+          label: "Reindex all",
+          onReindex: () => {},
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Docs" }));
+    expect(onSelectTab).toHaveBeenCalledWith("Docs");
+  });
+
+  it("shows reindex button in disabled state when running", () => {
+    render(
+      <SidebarNav
+        navigation={{
+          activeTab: "Projects",
+          onSelectTab: () => {},
+        }}
+        collapse={{
+          collapsed: false,
+          onToggleCollapse: () => {},
+        }}
+        reindex={{
+          label: "Reindex all",
+          isRunning: true,
+          onReindex: () => {},
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /Reindex all/ })).toBeDisabled();
+  });
 });
