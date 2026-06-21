@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { HelperCommand } from "./HelperCommand";
+import { HELPER_COMMAND } from "../lib/inspect";
 
 describe("HelperCommand", () => {
   it("renders the local helper label and container aria-label", () => {
@@ -30,6 +31,7 @@ describe("HelperCommand", () => {
 
     expect(screen.getByText(customCommand)).toBeInTheDocument();
     const copyButton = screen.getByRole("button", { name: "Copy" });
+    expect(copyButton).toHaveAttribute("type", "button");
     fireEvent.click(copyButton);
     expect(onCopy).toHaveBeenCalledTimes(1);
   });
@@ -41,5 +43,11 @@ describe("HelperCommand", () => {
     const codeElement = screen.getByText(command).closest('code');
     expect(codeElement).toBeInTheDocument();
     expect(codeElement?.textContent).toBe(command);
+  });
+
+  it("uses the default HELPER_COMMAND when no command is provided", () => {
+    const onCopy = vi.fn();
+    render(<HelperCommand onCopy={onCopy} />);
+    expect(screen.getByText(HELPER_COMMAND)).toBeInTheDocument();
   });
 });
