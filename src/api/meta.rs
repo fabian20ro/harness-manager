@@ -35,8 +35,8 @@ pub async fn index() -> Html<String> {
   <body>
     <div class="card">
       <h1>Harness Inspector</h1>
-      <p>Rust helper live. API on <code>/api/*</code>.</p>
-      <p>React UI source in <code>ui/</code>. Run <code>npm install && npm run dev</code> there for the browser app.</p>
+      <p>Rust helper live. API on <code >/api/*</code>.</p>
+      <p>React UI source in <code >ui/</code>. Run <code >npm install && npm run dev</code> there for the browser app.</p>
     </div>
   </body>
 </html>"#.to_string(),
@@ -175,8 +175,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_index_fallback() {
-        let _lock = CWD_MUTEX.lock().unwrap();
-        let _cwd = TestCwd::enter();
+        let _cwd = {
+            let _lock = CWD_MUTEX.lock().unwrap();
+            TestCwd::enter()
+        };
 
         let res = index().await;
         assert!(res.0.contains("Harness Inspector"));
@@ -185,10 +187,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_index_file() {
-        let _lock = CWD_MUTEX.lock().unwrap();
-        let _cwd = TestCwd::enter();
-        fs::create_dir_all("ui/dist").unwrap();
-        fs::write("ui/dist/index.html", "<html><body>Custom Index</body></html>").unwrap();
+        let _cwd = {
+            let _lock = CWD_MUTEX.lock().unwrap();
+            let cwd = TestCwd::enter();
+            fs::create_dir_all("ui/dist").unwrap();
+            fs::write("ui/dist/index.html", "<html><body>Custom Index</body></html>").unwrap();
+            cwd
+        };
 
         let res = index().await;
         assert_eq!(res.0, "<html><body>Custom Index</body></html>");
