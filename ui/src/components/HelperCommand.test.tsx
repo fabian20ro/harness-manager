@@ -4,6 +4,14 @@ import { describe, expect, it, vi } from "vitest";
 import { HelperCommand } from "./HelperCommand";
 
 describe("HelperCommand", () => {
+  it("renders the local helper label and container aria-label", () => {
+    const onCopy = vi.fn();
+    render(<HelperCommand onCopy={onCopy} />);
+
+    expect(screen.getByText("Local helper")).toBeInTheDocument();
+    expect(screen.getByLabelText("Local helper command")).toBeInTheDocument();
+  });
+
   it("renders cargo run and copy button", () => {
     const onCopy = vi.fn();
     render(<HelperCommand onCopy={onCopy} />);
