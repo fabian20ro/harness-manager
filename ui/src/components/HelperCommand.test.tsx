@@ -33,4 +33,13 @@ describe("HelperCommand", () => {
     fireEvent.click(copyButton);
     expect(onCopy).toHaveBeenCalledTimes(1);
   });
+
+  it("renders the command inside a code element", () => {
+    const onCopy = vi.fn();
+    const command = "custom command";
+    render(<HelperCommand command={command} onCopy={onCopy} />);
+    const codeElement = screen.getByText(command).closest('code');
+    expect(codeElement).toBeInTheDocument();
+    expect(codeElement?.textContent).toBe(command);
+  });
 });
