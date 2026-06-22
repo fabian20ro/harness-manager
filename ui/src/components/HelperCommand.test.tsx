@@ -50,4 +50,13 @@ describe("HelperCommand", () => {
     render(<HelperCommand onCopy={onCopy} />);
     expect(screen.getByText(HELPER_COMMAND)).toBeInTheDocument();
   });
+
+  it("renders an empty command and still handles copy", () => {
+    const onCopy = vi.fn();
+    render(<HelperCommand command="" onCopy={onCopy} />);
+    const copyButton = screen.getByRole("button", { name: "Copy" });
+    expect(copyButton).toHaveAttribute("type", "button");
+    fireEvent.click(copyButton);
+    expect(onCopy).toHaveBeenCalledTimes(1);
+  });
 });
