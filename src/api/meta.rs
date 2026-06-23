@@ -169,16 +169,14 @@ mod tests {
 
     impl Drop for TestCwd {
         fn drop(&mut self) {
-            std::env::set_current_dir(&self.original).unwrap();
+            let _ = std::env::set_current_dir(&self.original);
         }
     }
 
     #[tokio::test]
     async fn test_index_fallback() {
-        let _cwd = {
-            let _lock = CWD_MUTEX.lock().unwrap();
-            TestCwd::enter()
-        };
+        let _lock = CWD_MUTEX.lock().unwrap();
+        let _cwd = TestCwd::enter();
 
         let res = index().await;
         assert!(res.0.contains("Harness Inspector"));
@@ -187,13 +185,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_index_file() {
-        let _cwd = {
-            let _lock = CWD_MUTEX.lock().unwrap();
-            let cwd = TestCwd::enter();
-            fs::create_dir_all("ui/dist").unwrap();
-            fs::write("ui/dist/index.html", "<html><body>Custom Index</body></html>").unwrap();
-            cwd
-        };
+        let _lock = CWD_MUTEX.lock().unwrap();
+        let _cwd = TestCwd::enter();
+        fs::create_dir_all("ui/dist").unwrap();
+        fs::write("ui/dist/index.html", "<html><body>Custom Index</body></html>").unwrap();
 
         let res = index().await;
         assert_eq!(res.0, "<html><body>Custom Index</body></html>");
