@@ -35,8 +35,8 @@ pub async fn index() -> Html<String> {
   <body>
     <div class="card">
       <h1>Harness Inspector</h1>
-      <p>Rust helper live. API on <code>/api/*</code>.</p>
-      <p>React UI source in <code>ui/</code>. Run <code>npm install && npm run dev</code> there for the browser app.</p>
+      <p>Rust helper live. API on <code >/api/*</code>.</p>
+      <p>React UI source in <code >ui/</code>. Run <code >npm install && npm run dev</code> there for the browser app.</p>
     </div>
   </body>
 </html>"#.to_string(),
@@ -169,7 +169,7 @@ mod tests {
 
     impl Drop for TestCwd {
         fn drop(&mut self) {
-            std::env::set_current_dir(&self.original).unwrap();
+            let _ = std::env::set_current_dir(&self.original);
         }
     }
 
