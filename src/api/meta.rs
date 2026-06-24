@@ -30,16 +30,28 @@ pub async fn index() -> Html<String> {
       body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 0; padding: 40px; background: linear-gradient(180deg,#f8f2e8,#edf5ff); color: #132033; }
       code { background: rgba(19,32,51,0.08); padding: 2px 6px; border-radius: 6px; }
       .card { max-width: 720px; background: rgba(255,255,255,0.76); border: 1px solid rgba(19,32,51,0.1); padding: 24px; border-radius: 18px; box-shadow: 0 24px 80px rgba(19,32,51,0.08); }
+      ul { padding-left: 20px; }
+      li { margin-bottom: 8px; }
+      a { color: #0056b3; text-decoration: none; }
+      a:hover { text-decoration: underline; }
     </style>
   </head>
   <body>
     <div class="card">
       <h1>Harness Inspector</h1>
-      <p>Rust helper live. API on <code >/api/*</code>.</p>
-      <p>React UI source in <code >ui/</code>. Run <code >npm install && npm run dev</code> there for the browser app.</p>
+      <p>Rust helper live. API endpoints:</p>
+      <ul>
+        <li><a href="/api/projects">GET /api/projects</a></li>
+        <li><a href="/api/docs/fetch">POST /api/docs/fetch</a></li>
+        <li><a href="/api/activity/refresh">POST /api/activity/refresh</a></li>
+        <li><a href="/api/catalogs/refresh">POST /api/catalogs/refresh</a></li>
+      </ul>
+      <hr style="border: 0; border-top: 1px solid rgba(19,32,51,0.1); margin: 20px 0;">
+      <p>React UI source in <code>ui/</code>. Run <code>npm install && npm run dev</code> there for the browser app.</p>
     </div>
   </body>
-</html>"#.to_string(),
+</html>"#
+        .to_string()
     )
 }
 
