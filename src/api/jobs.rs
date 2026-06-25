@@ -18,6 +18,7 @@ pub struct JobEventQuery {
     pub tool: Option<String>,
     pub kind: Option<String>,
     pub project_id: Option<String>,
+    pub status: Option<String>,
 }
 
 pub async fn get_job(
