@@ -15,6 +15,8 @@ use crate::{
 #[derive(Debug, Deserialize)]
 pub struct JobEventQuery {
     pub job_id: Option<String>,
+    pub tool: Option<String>,
+    pub kind: Option<String>,
 }
 
 pub async fn get_job(
@@ -36,6 +38,16 @@ pub async fn get_events(
         let job = result.ok()?;
         if let Some(ref target_id) = query.job_id {
             if &job.id != target_id {
+                return None;
+            }
+        }
+        if let Some(ref target_tool) = query.tool {
+            if job.tool.as_deref() != Some(target_tool) {
+                return None;
+            }
+        }
+        if let Some(ref target_kind) = query.kind {
+            if job.kind != *target_kind {
                 return None;
             }
         }
