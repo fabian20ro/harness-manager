@@ -19,6 +19,7 @@ pub struct JobEventQuery {
     pub kind: Option<String>,
     pub project_id: Option<String>,
     pub status: Option<String>,
+    pub phase: Option<String>,
 }
 
 pub async fn get_job(
@@ -55,6 +56,11 @@ pub async fn get_events(
         }
         if let Some(ref target_project_id) = query.project_id {
             if job.project_id.as_deref() != Some(target_project_id) {
+                return None;
+            }
+        }
+        if let Some(ref target_phase) = query.phase {
+            if job.phase.as_deref() != Some(target_phase) {
                 return None;
             }
         }
