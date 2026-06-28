@@ -21,8 +21,14 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
+      - name: Fetch locked Rust dependencies
+        env:
+          CARGO_HTTP_MULTIPLEXING: "false"
+          CARGO_NET_RETRY: "10"
+        run: cargo fetch --locked
+
       - name: Run Rust tests
-        run: cargo test --locked
+        run: cargo test --locked --offline
 
   ui:
     runs-on: ubuntu-latest
