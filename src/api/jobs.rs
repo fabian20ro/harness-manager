@@ -45,7 +45,7 @@ pub async fn get_events(
             }
         }
         if let Some(ref target_tool) = query.tool {
-            if job.tool.as_deref() != Some(target_tool) {
+            if job.tool.as_deref() != Some(target_tool.as_str()) {
                 return None;
             }
         }
@@ -55,16 +55,16 @@ pub async fn get_events(
             }
         }
         if let Some(ref target_project_id) = query.project_id {
-            if job.project_id.as_deref() != Some(target_project_id) {
+            if job.project_id.as_deref() != Some(target_project_id.as_str()) {
                 return None;
             }
         }
         if let Some(ref target_phase) = query.phase {
-            if job.phase.as_deref() != Some(target_phase) {
+            if job.phase.as_deref() != Some(target_phase.as_str()) {
                 return None;
             }
         }
-        Some(Ok(Event::default().json_data(job).expect("job to json")))
+        Event::default().json_data(job).ok().map(Ok)
     });
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
