@@ -45,4 +45,31 @@ describe("CapabilitiesDashboard", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveAttribute("aria-atomic", "true");
   });
+
+  it("renders all capability sections when appropriate nodes are present in the graph", () => {
+    const fullGraph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-1", kind: "node", artifact_type: "skill", name: "Skill 1" },
+        { id: "hook-1", kind: "node", artifact_type: "hook", name: "Hook 1" },
+        { id: "mcp-1", kind: "node", artifact_type: "mcp", name: "MCP 1" },
+        { id: "instr-1", kind: "node", artifact_type: "instructions", name: "Instr 1" },
+      ],
+      edges: [],
+      verdicts: [
+        { entity_id: "skill-1", states: ["effective"], why_included: [], why_excluded: [] },
+        { entity_id: "hook-1", states: ["effective"], why_included: [], why_excluded: [] },
+        { entity_id: "mcp-1", states: ["effective"], why_included: [], why_excluded: [] },
+        { entity_id: "instr-1", states: ["effective"], why_included: [], why_excluded: [] },
+      ],
+    };
+
+    render(<CapabilitiesDashboard graph={fullGraph} />);
+
+    expect(screen.getByText(/Skills/i)).toBeInTheDocument();
+    expect(screen.getByText(/Hooks & Scripts/i)).toBeInTheDocument();
+    expect(screen.getByText(/MCP Servers/i)).toBeInTheDocument();
+    expect(screen.getByText(/Instructions & Agents/i)).toBeInTheDocument();
+  });
 });
