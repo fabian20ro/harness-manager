@@ -18,7 +18,12 @@ export function HelperCommand({ command = HELPER_COMMAND, onCopy }: HelperComman
   return (
     <div className="helper-command" aria-label="Local helper command">
       <span className="helper-command-label">Local helper</span>
-      <code aria-hidden="true" onClick={handleCopy} style={{ cursor: 'pointer' }}>{command}</code>
+      <code
+      onClick={handleCopy}
+      onKeyDown={(e) => e.key === "Enter" && handleCopy()}
+      tabIndex={0}
+      style={{ cursor: 'pointer' }}
+    >{command}</code>
       <button type="button" onClick={handleCopy}>
         {isCopied ? "Copied!" : "Copy"}
       </button>
