@@ -72,4 +72,31 @@ describe("CapabilitiesDashboard", () => {
     expect(screen.getByText(/MCP Servers/i)).toBeInTheDocument();
     expect(screen.getByText(/Instructions & Agents/i)).toBeInTheDocument();
   });
+
+  it("renders correct status badges based on node usage states", () => {
+    const graphWithUsage: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-used", kind: "node", artifact_type: "skill", name: "Used Skill" },
+        { id: "skill-broken", kind: "node", artifact_type: "skill", name: "Broken Skill" },
+        { id: "skill-proposed", kind: "node", artifact_type: "skill", name: "Proposed Skill" },
+        { id: "skill-unused", kind: "node", artifact_type: "skill", name: "Unused Skill" },
+      ],
+      edges: [],
+      verdicts: [
+        { entity_id: "skill-used", states: ["effective"], why_included: [], why_excluded: [] },
+        { entity_id: "skill-broken", states: ["unresolved"], why_included: [], why_excluded: [] },
+        { entity_id: "skill-proposed", states: ["proposed"], why_included: [], why_excluded: [] },
+        { entity_id: "skill-unused", states: [], why_included: [], why_excluded: [] },
+      ],
+    };
+
+    render(<CapabilitiesDashboard graph={graphWithUsage} />);
+
+    expect(screen.getByText(/Effective/i, { selector: 'span' })).toBeInTheDocument();
+    expect(screen.getByText(/Broken/i, { selector: 'span' })).toBeInTheDocument();
+    expect(screen.getByText(/Proposed/i, { selector: 'span' })).toBeInTheDocument();
+    expect(screen.getByText(/Inactive/i, { selector: 'span' })).toBeInTheDocument();
+  });
 });
