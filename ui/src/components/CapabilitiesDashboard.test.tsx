@@ -99,4 +99,24 @@ describe("CapabilitiesDashboard", () => {
     expect(screen.getByText(/Proposed/i, { selector: 'span' })).toBeInTheDocument();
     expect(screen.getByText(/Inactive/i, { selector: 'span' })).toBeInTheDocument();
   });
+
+  it("correctly categorizes 'script' as Hooks & Scripts and 'agent' as Instructions & Agents", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "script-1", kind: "node", artifact_type: "script", name: "Script 1" },
+        { id: "agent-1", kind: "node", artifact_type: "agent", name: "Agent 1" },
+      ],
+      edges: [],
+      verdicts: [],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    expect(screen.getByText(/Hooks & Scripts/i)).toBeInTheDocument();
+    expect(screen.getByText(/Instructions & Agents/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Skills/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/MCP Servers/i)).not.toBeInTheDocument();
+  });
 });
