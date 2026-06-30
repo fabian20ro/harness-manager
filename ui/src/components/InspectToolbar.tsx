@@ -64,14 +64,24 @@ export function InspectToolbar({
           </select>
         </label>
         <label className="api-field">
-          <span>API</span>
+        <span>API</span>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
           <input
             value={apiBase}
             onChange={(event) => onApiBaseChange(event.target.value)}
             placeholder="http://127.0.0.1:8765"
             style={{ minWidth: '160px' }}
           />
-        </label>
+          <button
+            type="button"
+            onClick={() => navigator.clipboard.writeText(apiBase)}
+            title="Copy API"
+            style={{ marginLeft: '4px', padding: '0 4px', cursor: 'pointer', background: 'none', border: 'none' }}
+          >
+            📋
+          </button>
+        </div>
+      </label>
         <div style={{ flex: 1 }} />
         <HelperCommand onCopy={onCopyHelper} />
         <div className="toolbar-action">
