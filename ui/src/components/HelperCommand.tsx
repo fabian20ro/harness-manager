@@ -24,9 +24,9 @@ export function HelperCommand({ command = HELPER_COMMAND, onCopy }: HelperComman
       tabIndex={0}
       role="button"
       title="Click to copy"
-      style={{ cursor: 'pointer' }}
+      style={{ cursor: 'pointer', userSelect: 'none' }}
     >{command}</code>
-      <button type="button" onClick={handleCopy}>
+      <button type="button" onClick={handleCopy} aria-live="polite">
         {isCopied ? "Copied!" : "Copy"}
       </button>
     </div>

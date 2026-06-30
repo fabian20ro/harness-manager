@@ -99,4 +99,47 @@ describe("CapabilitiesDashboard", () => {
     expect(screen.getByText(/Proposed/i, { selector: 'span' })).toBeInTheDocument();
     expect(screen.getByText(/Inactive/i, { selector: 'span' })).toBeInTheDocument();
   });
+
+  it("correctly categorizes 'script' as Hooks & Scripts and 'agent' as Instructions & Agents", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "script-1", kind: "node", artifact_type: "script", name: "Script 1" },
+        { id: "agent-1", kind: "node", artifact_type: "agent", name: "Agent 1" },
+      ],
+      edges: [],
+      verdicts: [],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    expect(screen.getByText(/Hooks & Scripts/i)).toBeInTheDocument();
+    expect(screen.getByText(/Instructions & Agents/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Skills/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/MCP Servers/i)).not.toBeInTheDocument();
+  });
+
+  it("renders the correct count for each section", () => {
+    const graphWithCounts: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-1", kind: "node", artifact_type: "skill", name: "Skill 1" },
+        { id: "skill-2", kind: "node", artifact_type: "skill", name: "Skill 2" },
+        { id: "hook-1", kind: "node", artifact_type: "hook", name: "Hook 1" },
+        { id: "mcp-1", kind: "node", artifact_type: "mcp", name: "MCP 1" },
+        { id: "instr-1", kind: "node", artifact_type: "instructions", name: "Instr 1" },
+      ],
+      edges: [],
+      verdicts: [],
+    };
+
+    render(<CapabilitiesDashboard graph={graphWithCounts} />);
+
+    expect(screen.getByText(/Skills/i)).toHaveTextContent("(2)");
+    expect(screen.getByText(/Hooks & Scripts/i)).toHaveTextContent("(1)");
+    expect(screen.getByText(/MCP Servers/i)).toHaveTextContent("(1)");
+    expect(screen.getByText(/Instructions & Agents/i)).toHaveTextContent("(1)");
+  });
 });
