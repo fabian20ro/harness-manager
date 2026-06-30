@@ -20,8 +20,10 @@ export function HelperCommand({ command = HELPER_COMMAND, onCopy }: HelperComman
       <span className="helper-command-label">Local helper</span>
       <code
       onClick={handleCopy}
-      onKeyDown={(e) => e.key === "Enter" && handleCopy()}
+      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && handleCopy()}
       tabIndex={0}
+      role="button"
+      title="Click to copy"
       style={{ cursor: 'pointer' }}
     >{command}</code>
       <button type="button" onClick={handleCopy}>
