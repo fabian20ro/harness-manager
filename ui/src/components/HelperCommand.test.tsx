@@ -45,10 +45,18 @@ describe("HelperCommand", () => {
     expect(codeElement?.textContent).toBe(command);
   });
 
-  it("uses the default HELPER_COMMAND when no command is provided", () => {
+  it("handles keyboard interaction (Enter/Space) on the code element", () => {
     const onCopy = vi.fn();
-    render(<HelperCommand onCopy={onCopy} />);
-    expect(screen.getByText(HELPER_COMMAND)).toBeInTheDocument();
+    const command = "npm test";
+    render(<HelperCommand command={command} onCopy={onCopy} />);
+    const codeElement = screen.getByText(command).closest('code');
+    if (!codeElement) throw new Error("Code element not found");
+
+    fireEvent.keyDown(codeElement, { key: "Enter", code: "Enter" });
+    expect(onCopy).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(codeElement, { key: " ", code: "Space" });
+    expect(onCopy).toHaveBeenCalledTimes(2);
   });
 
   it("renders an empty command and still handles copy", () => {
