@@ -309,4 +309,36 @@ describe("CapabilitiesDashboard", () => {
 
     expect(screen.getByText("Discovered during index pass")).toBeInTheDocument();
   });
+
+  it("renders getNodeDisplayPath output as the strong label when name is absent", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-no-name-display", kind: "node", artifact_type: "skill", display_path: "~/git/harness-manager" },
+      ],
+      edges: [],
+      verdicts: [],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    expect(screen.getByText("~/git/harness-manager", { selector: "strong" })).toBeInTheDocument();
+  });
+
+  it("renders getNodeDisplayPath output as the strong label when only path is present", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-no-name-path", kind: "node", artifact_type: "skill", path: "/workspace/skill.ts" },
+      ],
+      edges: [],
+      verdicts: [],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    expect(screen.getByText("/workspace/skill.ts", { selector: "strong" })).toBeInTheDocument();
+  });
 });
