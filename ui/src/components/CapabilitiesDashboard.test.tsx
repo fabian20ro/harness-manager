@@ -142,4 +142,45 @@ describe("CapabilitiesDashboard", () => {
     expect(screen.getByText(/MCP Servers/i)).toHaveTextContent("(1)");
     expect(screen.getByText(/Instructions & Agents/i)).toHaveTextContent("(1)");
   });
+
+  it("hides capability sections with no items when graph has mixed types", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-1", kind: "node", artifact_type: "skill", name: "Skill 1" },
+        { id: "hook-1", kind: "node", artifact_type: "script", name: "Hook 1" },
+        { id: "agent-1", kind: "node", artifact_type: "agent", name: "Agent 1" },
+      ],
+      edges: [],
+      verdicts: [],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    expect(screen.getByText(/Skills/i)).toBeInTheDocument();
+    expect(screen.getByText(/Hooks & Scripts/i)).toBeInTheDocument();
+    expect(screen.queryByText(/MCP Servers/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Instructions & Agents/i)).toBeInTheDocument();
+  });
+
+  it("renders a single section with correct count when only one type is present", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "mcp-1", kind: "node", artifact_type: "mcp", name: "MCP 1" },
+        { id: "mcp-2", kind: "node", artifact_type: "mcp", name: "MCP 2" },
+      ],
+      edges: [],
+      verdicts: [],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    expect(screen.queryByText(/Skills/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Hooks & Scripts/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/MCP Servers/i)).toHaveTextContent("(2)");
+    expect(screen.queryByText(/Instructions & Agents/i)).not.toBeInTheDocument();
+  });
 });
