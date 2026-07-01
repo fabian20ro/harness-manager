@@ -206,4 +206,91 @@ describe("CapabilitiesDashboard", () => {
     expect(screen.getByText(/MCP Servers/i)).toHaveTextContent("(2)");
     expect(screen.queryByText(/Instructions & Agents/i)).not.toBeInTheDocument();
   });
+
+  it("falls back to id when description and reason are absent", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-1", kind: "node", artifact_type: "skill", name: "Fallback Skill" },
+      ],
+      edges: [],
+      verdicts: [],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    expect(screen.getByText("Fallback Skill")).toBeInTheDocument();
+    const card = screen.getByText("Fallback Skill").closest(".project-card");
+    const pEl = card?.querySelector("p");
+    expect(pEl).not.toHaveTextContent(/description/i);
+  });
+
+  it("renders description when present on the node", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-1", kind: "node", artifact_type: "skill", name: "Described Skill", description: "A skill with a description" },
+      ],
+      edges: [],
+      verdicts: [],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    expect(screen.getByText("A skill with a description")).toBeInTheDocument();
+  });
+
+  it("renders display_path in code element, falling back to path when display_path is absent", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-display", kind: "node", artifact_type: "skill", name: "Display Skill", path: "/workspace/skill.ts", display_path: "/other/display.ts" },
+        { id: "skill-path", kind: "node", artifact_type: "skill", name: "Path Skill", path: "/workspace/path.ts" },
+      ],
+      edges: [],
+      verdicts: [],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    expect(screen.getByText("/other/display.ts", { selector: "code" })).toBeInTheDocument();
+    expect(screen.getByText("/workspace/path.ts", { selector: "code" })).toBeInTheDocument();
+  });
+
+  it("omits the code element when neither display_path nor path is set on a node", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-no-path", kind: "node", artifact_type: "skill", name: "No Path Skill" },
+      ],
+      edges: [],
+      verdicts: [],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    const card = screen.getByText("No Path Skill").closest(".project-card");
+    expect(card?.querySelector("code")).toBeNull();
+  });
+
+  it("renders without crashing when a node has no name but has an id", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-no-name", kind: "node", artifact_type: "skill" },
+      ],
+      edges: [],
+      verdicts: [],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    const card = screen.getByText(/skill-no-name/).closest(".project-card");
+    expect(card).toBeInTheDocument();
+  });
 });

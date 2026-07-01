@@ -67,4 +67,17 @@ describe("HelperCommand", () => {
     fireEvent.click(copyButton);
     expect(onCopy).toHaveBeenCalledTimes(1);
   });
+
+  it("writes the command text to the clipboard on copy", async () => {
+    const onCopy = vi.fn();
+    Object.defineProperty(navigator, "clipboard", {
+      writable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+
+    render(<HelperCommand onCopy={onCopy} />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+
+    await expect(navigator.clipboard.writeText).toHaveBeenCalledWith(HELPER_COMMAND);
+  });
 });
