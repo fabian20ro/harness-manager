@@ -293,4 +293,81 @@ describe("CapabilitiesDashboard", () => {
     const card = screen.getByText(/skill-no-name/).closest(".project-card");
     expect(card).toBeInTheDocument();
   });
+
+  it("falls back to node.reason as the description text when description is absent", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-1", kind: "node", artifact_type: "skill", name: "Reason Skill", reason: "Discovered during index pass" },
+      ],
+      edges: [],
+      verdicts: [],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    expect(screen.getByText("Discovered during index pass")).toBeInTheDocument();
+  });
+
+  it("renders getNodeDisplayPath output as the strong label when name is absent", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-no-name-display", kind: "node", artifact_type: "skill", display_path: "~/git/harness-manager" },
+      ],
+      edges: [],
+      verdicts: [],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    expect(screen.getByText("~/git/harness-manager", { selector: "strong" })).toBeInTheDocument();
+  });
+
+  it("renders getNodeDisplayPath output as the strong label when only path is present", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-no-name-path", kind: "node", artifact_type: "skill", path: "/workspace/skill.ts" },
+      ],
+      edges: [],
+      verdicts: [],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    expect(screen.getByText("/workspace/skill.ts", { selector: "strong" })).toBeInTheDocument();
+  });
+
+  it("applies the correct border-left CSS variable based on node usage state", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-used", kind: "node", artifact_type: "skill", name: "Used Skill" },
+        { id: "skill-broken", kind: "node", artifact_type: "skill", name: "Broken Skill" },
+        { id: "skill-proposed", kind: "node", artifact_type: "skill", name: "Proposed Skill" },
+      ],
+      edges: [],
+      verdicts: [
+        { entity_id: "skill-used", states: ["effective"], why_included: [], why_excluded: [] },
+        { entity_id: "skill-broken", states: ["unresolved"], why_included: [], why_excluded: [] },
+        { entity_id: "skill-proposed", states: ["proposed"], why_included: [], why_excluded: [] },
+      ],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    const usedCard = screen.getByText("Used Skill").closest(".project-card");
+    expect(usedCard).toHaveStyle({ borderLeft: "4px solid var(--primary)" });
+
+    const brokenCard = screen.getByText("Broken Skill").closest(".project-card");
+    expect(brokenCard).toHaveStyle({ borderLeft: "4px solid var(--warning)" });
+
+    const proposedCard = screen.getByText("Proposed Skill").closest(".project-card");
+    expect(proposedCard).toHaveStyle({ borderLeft: "4px solid var(--accent)" });
+  });
 });
