@@ -120,7 +120,7 @@ describe("CapabilitiesDashboard", () => {
     expect(screen.queryByText(/MCP Servers/i)).not.toBeInTheDocument();
   });
 
-  it("renders the correct count for each section", () => {
+  it("renders correct count for each section", () => {
     const graphWithCounts: SurfaceState = {
       project: baseGraph.project,
       tool: baseGraph.tool,
@@ -141,6 +141,29 @@ describe("CapabilitiesDashboard", () => {
     expect(screen.getByText(/Hooks & Scripts/i)).toHaveTextContent("(1)");
     expect(screen.getByText(/MCP Servers/i)).toHaveTextContent("(1)");
     expect(screen.getByText(/Instructions & Agents/i)).toHaveTextContent("(1)");
+  });
+
+  it("renders nodes as Inactive when verdicts do not include their entity_id", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-1", kind: "node", artifact_type: "skill", name: "Known Skill" },
+        { id: "unknown-skill", kind: "node", artifact_type: "skill", name: "Unknown Skill" },
+      ],
+      edges: [],
+      verdicts: [
+        { entity_id: "skill-1", states: ["effective"], why_included: [], why_excluded: [] },
+      ],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    expect(screen.getByText("Known Skill")).toBeInTheDocument();
+    expect(screen.getByText("Unknown Skill")).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Inactive/i, { selector: "span" }),
+    ).toHaveLength(1);
   });
 
   it("hides capability sections with no items when graph has mixed types", () => {
