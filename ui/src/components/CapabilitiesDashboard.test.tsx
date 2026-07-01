@@ -293,4 +293,20 @@ describe("CapabilitiesDashboard", () => {
     const card = screen.getByText(/skill-no-name/).closest(".project-card");
     expect(card).toBeInTheDocument();
   });
+
+  it("falls back to node.reason as the description text when description is absent", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-1", kind: "node", artifact_type: "skill", name: "Reason Skill", reason: "Discovered during index pass" },
+      ],
+      edges: [],
+      verdicts: [],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    expect(screen.getByText("Discovered during index pass")).toBeInTheDocument();
+  });
 });
