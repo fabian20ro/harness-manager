@@ -9,7 +9,14 @@ type HelperCommandProps = {
 export function HelperCommand({ command = HELPER_COMMAND, onCopy }: HelperCommandProps) {
   const [isCopied, setIsCopied] = useState(false);
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
+    if (navigator.clipboard && command) {
+      try {
+        await navigator.clipboard.writeText(command);
+      } catch {
+        // clipboard unavailable or denied — fall through to onCopy callback only
+      }
+    }
     onCopy();
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
