@@ -206,4 +206,39 @@ describe("CapabilitiesDashboard", () => {
     expect(screen.getByText(/MCP Servers/i)).toHaveTextContent("(2)");
     expect(screen.queryByText(/Instructions & Agents/i)).not.toBeInTheDocument();
   });
+
+  it("falls back to id when description and reason are absent", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-1", kind: "node", artifact_type: "skill", name: "Fallback Skill" },
+      ],
+      edges: [],
+      verdicts: [],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    expect(screen.getByText("Fallback Skill")).toBeInTheDocument();
+    const card = screen.getByText("Fallback Skill").closest(".project-card");
+    const pEl = card?.querySelector("p");
+    expect(pEl).not.toHaveTextContent(/description/i);
+  });
+
+  it("renders description when present on the node", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-1", kind: "node", artifact_type: "skill", name: "Described Skill", description: "A skill with a description" },
+      ],
+      edges: [],
+      verdicts: [],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    expect(screen.getByText("A skill with a description")).toBeInTheDocument();
+  });
 });
