@@ -276,4 +276,21 @@ describe("CapabilitiesDashboard", () => {
     const card = screen.getByText("No Path Skill").closest(".project-card");
     expect(card?.querySelector("code")).toBeNull();
   });
+
+  it("renders without crashing when a node has no name but has an id", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-no-name", kind: "node", artifact_type: "skill" },
+      ],
+      edges: [],
+      verdicts: [],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    const card = screen.getByText(/skill-no-name/).closest(".project-card");
+    expect(card).toBeInTheDocument();
+  });
 });
