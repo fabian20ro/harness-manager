@@ -17,7 +17,7 @@ describe("HelperCommand", () => {
     const onCopy = vi.fn();
     render(<HelperCommand onCopy={onCopy} />);
 
-    expect(screen.getByText("cargo run")).toBeInTheDocument();
+    expect(screen.getByText(HELPER_COMMAND)).toBeInTheDocument();
     const copyButton = screen.getByRole("button", { name: "Copy" });
     expect(copyButton).toHaveAttribute("type", "button");
     fireEvent.click(copyButton);
