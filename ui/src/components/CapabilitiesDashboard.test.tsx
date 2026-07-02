@@ -446,4 +446,37 @@ describe("CapabilitiesDashboard", () => {
     expect(badge).toHaveStyle({ background: `var(--${colorVar}-bg)` });
     expect(badge).toHaveStyle({ color: `var(${usage ? "--" + colorVar : "--muted"})` });
   });
+
+  it("renders Inactive badge when verdict states array is empty (no verdict for node)", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-1", kind: "node", artifact_type: "skill", name: "Empty Verdict Skill" },
+      ],
+      edges: [],
+      verdicts: [{ entity_id: "skill-1", states: [], why_included: [], why_excluded: [] }],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    const badge = screen.getByText("Inactive", { selector: "span" });
+    expect(badge).toBeInTheDocument();
+  });
+
+  it("renders 'Effective' label when node has multiple verdict states including effective or observed", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-1", kind: "node", artifact_type: "skill", name: "Multi-State Skill" },
+      ],
+      edges: [],
+      verdicts: [{ entity_id: "skill-1", states: ["effective", "observed"], why_included: [], why_excluded: [] }],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    expect(screen.getByText("Effective")).toBeInTheDocument();
+  });
 });
