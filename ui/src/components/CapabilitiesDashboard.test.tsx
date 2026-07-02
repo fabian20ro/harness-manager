@@ -406,6 +406,24 @@ describe("CapabilitiesDashboard", () => {
     expect(pEl).not.toHaveTextContent(/hidden/i);
   });
 
+  it("renders 'observed' verdict states as Effective badges via usageStateForStates", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-1", kind: "node", artifact_type: "skill", name: "Observed Skill" },
+      ],
+      edges: [],
+      verdicts: [
+        { entity_id: "skill-1", states: ["observed"], why_included: [], why_excluded: [] },
+      ],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    expect(screen.getByText("Effective")).toBeInTheDocument();
+  });
+
   it.each([
     { usage: "effective", colorVar: "primary", label: "Effective" },
     { usage: "unresolved", colorVar: "warning", label: "Broken" },
