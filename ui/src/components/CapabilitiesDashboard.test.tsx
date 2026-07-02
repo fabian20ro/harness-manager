@@ -479,4 +479,32 @@ describe("CapabilitiesDashboard", () => {
 
     expect(screen.getByText("Effective")).toBeInTheDocument();
   });
+
+  it.each([
+    { title: /Skills/, emoji: "🛠️" },
+    { title: /Hooks & Scripts/, emoji: "⚓" },
+    { title: /MCP Servers/, emoji: "🔌" },
+    { title: /Instructions & Agents/, emoji: "📖" },
+  ])("renders the correct $emoji icon in the section header for $title", ({ title, emoji }) => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-1", kind: "node", artifact_type: "skill", name: "Skill 1" },
+        { id: "hook-1", kind: "node", artifact_type: "hook", name: "Hook 1" },
+        { id: "mcp-1", kind: "node", artifact_type: "mcp", name: "MCP 1" },
+        { id: "instr-1", kind: "node", artifact_type: "instructions", name: "Instr 1" },
+      ],
+      edges: [],
+      verdicts: [],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    expect(screen.getByText(emoji)).toBeInTheDocument();
+    const heading = screen.getAllByRole("heading");
+    const h3 = heading.find(h => h.textContent?.includes(title.source.slice(1, -1)));
+    expect(h3).not.toBeUndefined();
+    expect(h3!.textContent).toContain(emoji);
+  });
 });
