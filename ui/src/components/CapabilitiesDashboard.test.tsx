@@ -342,6 +342,22 @@ describe("CapabilitiesDashboard", () => {
     expect(screen.getByText("/workspace/skill.ts", { selector: "strong" })).toBeInTheDocument();
   });
 
+  it("renders getNodeDisplayPath output from root_path as the strong label when name, display_path and path are absent", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-no-name-path-root", kind: "node", artifact_type: "skill", root_path: "/workspace/root-only" },
+      ],
+      edges: [],
+      verdicts: [],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    expect(screen.getByText("/workspace/root-only", { selector: "strong" })).toBeInTheDocument();
+  });
+
   it("applies the correct border-left CSS variable based on node usage state", () => {
     const graph: SurfaceState = {
       project: baseGraph.project,
