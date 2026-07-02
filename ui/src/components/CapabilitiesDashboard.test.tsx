@@ -464,6 +464,24 @@ describe("CapabilitiesDashboard", () => {
     expect(badge).toBeInTheDocument();
   });
 
+  it("maps broken_reference verdict state to Broken badge via usageStateForStates", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-1", kind: "node", artifact_type: "skill", name: "Broken Ref Skill" },
+      ],
+      edges: [],
+      verdicts: [{ entity_id: "skill-1", states: ["broken_reference"], why_included: [], why_excluded: [] }],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    expect(screen.getByText("Broken")).toBeInTheDocument();
+    const card = screen.getByText("Broken Ref Skill").closest(".project-card");
+    expect(card).toHaveStyle({ borderLeft: "4px solid var(--warning)" });
+  });
+
   it("renders 'Effective' label when node has multiple verdict states including effective or observed", () => {
     const graph: SurfaceState = {
       project: baseGraph.project,
