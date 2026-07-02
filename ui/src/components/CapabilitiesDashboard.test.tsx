@@ -389,4 +389,27 @@ describe("CapabilitiesDashboard", () => {
     const pEl = card?.querySelector("p");
     expect(pEl).not.toHaveTextContent(/hidden/i);
   });
+
+  it.each([
+    { usage: "effective", colorVar: "primary", label: "Effective" },
+    { usage: "unresolved", colorVar: "warning", label: "Broken" },
+    { usage: "proposed", colorVar: "accent", label: "Proposed" },
+    { usage: "", colorVar: "muted", label: "Inactive" },
+  ])("sets badge background and text color CSS variables for $usage state", ({ usage, colorVar, label }) => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-1", kind: "node", artifact_type: "skill", name: "Badge Skill" },
+      ],
+      edges: [],
+      verdicts: [{ entity_id: "skill-1", states: usage ? [usage] : [], why_included: [], why_excluded: [] }],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    const badge = screen.getByText(label, { selector: "span" });
+    expect(badge).toHaveStyle({ background: `var(--${colorVar}-bg)` });
+    expect(badge).toHaveStyle({ color: `var(${usage ? "--" + colorVar : "--muted"})` });
+  });
 });
