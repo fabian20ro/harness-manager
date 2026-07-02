@@ -370,4 +370,23 @@ describe("CapabilitiesDashboard", () => {
     const proposedCard = screen.getByText("Proposed Skill").closest(".project-card");
     expect(proposedCard).toHaveStyle({ borderLeft: "4px solid var(--accent)" });
   });
+
+  it("uses description over reason when both are present on the node", () => {
+    const graph: SurfaceState = {
+      project: baseGraph.project,
+      tool: baseGraph.tool,
+      nodes: [
+        { id: "skill-1", kind: "node", artifact_type: "skill", name: "Both Skill", description: "The visible one", reason: "The hidden one" },
+      ],
+      edges: [],
+      verdicts: [],
+    };
+
+    render(<CapabilitiesDashboard graph={graph} />);
+
+    expect(screen.getByText("The visible one")).toBeInTheDocument();
+    const card = screen.getByText("Both Skill").closest(".project-card");
+    const pEl = card?.querySelector("p");
+    expect(pEl).not.toHaveTextContent(/hidden/i);
+  });
 });
